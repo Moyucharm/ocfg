@@ -41,6 +41,12 @@ describe("secret strategy", () => {
   test("returns diagnostics for plaintext keys", () => {
     const diagnostics = detectPlaintextApiKey("sk-1234567890", "/provider/openai/options/apiKey")
     expect(diagnostics[0]?.severity).toBe("medium")
+    expect(diagnostics[0]?.source).toBe("config")
     expect(diagnostics[0]?.path).toBe("/provider/openai/options/apiKey")
+  })
+
+  test("returns no diagnostics for safe references", () => {
+    expect(detectPlaintextApiKey("{env:OPENAI_API_KEY}")).toEqual([])
+    expect(detectPlaintextApiKey("{file:~/.secrets/openai}")).toEqual([])
   })
 })

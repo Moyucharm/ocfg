@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { createConfigDiff, stringifyConfig } from "./diff.js"
 import type { ConfigDocument, Diagnostic } from "./types.js"
@@ -41,6 +41,15 @@ async function fileExists(filePath: string) {
     .catch(() => false)
 }
 
+async function availableBackupPath(targetPath: string, date: Date) {
+  const basePath = backupPathFor(targetPath, date)
+  if (!(await fileExists(basePath))) return basePath
+
+  let index = 1
+  while (await fileExists(`${basePath}.${index}`)) index += 1
+  return `${basePath}.${index}`
+}
+
 export async function writeConfigSafely(input: WriteConfigSafelyInput): Promise<WriteConfigSafelyResult> {
   const afterText = input.nextText ?? stringifyConfig(input.nextConfig)
   const beforeText = input.document.target.exists ? input.document.text : ""
@@ -75,13 +84,18 @@ export async function writeConfigSafely(input: WriteConfigSafelyInput): Promise<
   let backupPath: string | undefined
   const shouldBackup = input.backup ?? true
   if (shouldBackup && (await fileExists(targetPath))) {
-    backupPath = backupPathFor(targetPath, input.now ?? new Date())
+    backupPath = await availableBackupPath(targetPath, input.now ?? new Date())
     await writeFile(backupPath, await readFile(targetPath, "utf8"), "utf8")
   }
 
   const tempPath = path.join(targetDir, `.${path.basename(targetPath)}.tmp-${process.pid}-${Date.now()}`)
-  await writeFile(tempPath, afterText, "utf8")
-  await rename(tempPath, targetPath)
+  try {
+    await writeFile(tempPath, afterText, "utf8")
+    await rename(tempPath, targetPath)
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined)
+    throw error
+  }
 
   return {
     written: true,

@@ -55,6 +55,17 @@ describe("provider editor", () => {
     expect(((updated.provider as any).custom.models.m1 as any).limit.context).toBe(10)
   })
 
+  test("does not mutate input when deleting providers or models", () => {
+    const config = addProvider({}, draft)
+    const withoutModel = deleteModel(config, "custom", "model")
+    const withoutProvider = deleteProvider(config, "custom")
+
+    expect(((config.provider as any).custom.models as Record<string, unknown>).model).toBeDefined()
+    expect((config.provider as Record<string, unknown>).custom).toBeDefined()
+    expect(((withoutModel.provider as any).custom.models as Record<string, unknown>).model).toBeUndefined()
+    expect((withoutProvider.provider as Record<string, unknown>).custom).toBeUndefined()
+  })
+
   test("rejects duplicate model IDs", () => {
     const config = addProvider({}, draft)
     expect(() => addModel(config, "custom", "model", { name: "Duplicate" })).toThrow(ProviderEditorError)
@@ -64,8 +75,18 @@ describe("provider editor", () => {
     const config = addProvider({}, draft)
     const withDefault = setDefaultModel(config, "custom/model")
     const withSmall = setSmallModel(withDefault, "custom/model")
+    expect(config.model).toBeUndefined()
+    expect(withDefault.small_model).toBeUndefined()
     expect(withSmall.model).toBe("custom/model")
     expect(withSmall.small_model).toBe("custom/model")
+  })
+
+  test("rejects updating or deleting missing entries", () => {
+    const config = addProvider({}, draft)
+    expect(() => updateProvider(config, "missing", { name: "Nope" })).toThrow(ProviderEditorError)
+    expect(() => updateModel(config, "custom", "missing", { name: "Nope" })).toThrow(ProviderEditorError)
+    expect(() => deleteProvider(config, "missing")).toThrow(ProviderEditorError)
+    expect(() => deleteModel(config, "custom", "missing")).toThrow(ProviderEditorError)
   })
 
   test("finds provider and model references", () => {
@@ -79,6 +100,11 @@ describe("provider editor", () => {
     expect(() => deleteProvider(config, "custom")).toThrow(ProviderEditorError)
   })
 
+  test("blocks deleting provider referenced by small_model without token", () => {
+    const config = { ...addProvider({}, draft), small_model: "custom/model" }
+    expect(() => deleteProvider(config, "custom")).toThrow(ProviderEditorError)
+  })
+
   test("allows deleting referenced provider with token", () => {
     const config = { ...addProvider({}, draft), model: "custom/model" }
     const next = deleteProvider(config, "custom", { confirmReferencedDelete: "delete:custom" })
@@ -87,6 +113,11 @@ describe("provider editor", () => {
 
   test("blocks deleting referenced model without token", () => {
     const config = { ...addProvider({}, draft), model: "custom/model" }
+    expect(() => deleteModel(config, "custom", "model")).toThrow(ProviderEditorError)
+  })
+
+  test("blocks deleting model referenced by small_model without token", () => {
+    const config = { ...addProvider({}, draft), small_model: "custom/model" }
     expect(() => deleteModel(config, "custom", "model")).toThrow(ProviderEditorError)
   })
 

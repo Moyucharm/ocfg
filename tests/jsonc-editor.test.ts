@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { parse } from "jsonc-parser"
-import { applyProviderEdit } from "../src/core/jsonc-editor.js"
+import { applyConfigEdit, applyModelEdit, applyProviderEdit } from "../src/core/jsonc-editor.js"
 import type { ConfigDocument } from "../src/core/types.js"
 
 function doc(text: string): ConfigDocument {
@@ -36,5 +36,48 @@ describe("jsonc editor", () => {
     expect(nextText).toContain('"old"')
     expect(nextText).toContain('"new"')
     expect(parse(nextText).provider.new.npm).toBe("@ai-sdk/openai-compatible")
+  })
+
+  test("sets top-level model with path edit", () => {
+    const source = `{
+  // keep
+  "$schema": "https://opencode.ai/config.json"
+}
+`
+    const nextText = applyConfigEdit(doc(source), ["model"], "custom/model")
+
+    expect(nextText).toContain("// keep")
+    expect(parse(nextText).model).toBe("custom/model")
+  })
+
+  test("adds model under provider while preserving provider comments", () => {
+    const source = `{
+  "provider": {
+    // keep provider comment
+    "custom": {
+      "models": {}
+    }
+  }
+}
+`
+    const nextText = applyModelEdit(doc(source), "custom", "model", { limit: { context: 10, output: 2 } })
+
+    expect(nextText).toContain("// keep provider comment")
+    expect(parse(nextText).provider.custom.models.model.limit.context).toBe(10)
+  })
+
+  test("creates valid text from empty documents", () => {
+    const nextText = applyProviderEdit(
+      {
+        target: { scope: "project", path: "/tmp/opencode.jsonc", exists: false, format: "jsonc" },
+        text: "",
+        data: {},
+        diagnostics: [],
+      },
+      "custom",
+      { npm: "@ai-sdk/openai-compatible", models: {} },
+    )
+
+    expect(parse(nextText).provider.custom.npm).toBe("@ai-sdk/openai-compatible")
   })
 })
