@@ -11,6 +11,7 @@ export type CreateProviderDraftInput = {
   baseURL?: string
   apiKey: SecretRef
   modelIDs: string[]
+  setCacheKey?: boolean
   modelsDev?: ModelsDevOptions
 }
 
@@ -43,7 +44,8 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
     apiKey: renderSecretRef(input.apiKey),
   }
   if (input.baseURL) options.baseURL = input.baseURL
-  if (shouldSetCacheKey(input.endpointKind)) options.setCacheKey = true
+  const setCacheKey = input.setCacheKey ?? shouldSetCacheKey(input.endpointKind)
+  if (setCacheKey) options.setCacheKey = true
 
   return {
     provider: {

@@ -93,4 +93,18 @@ describe("provider generator", () => {
     expect(result.provider.npm).toBe("@ai-sdk/openai-compatible")
     expect(result.provider.models["gemini-2.5-pro"]).toBeDefined()
   })
+
+  test("allows callers to override setCacheKey defaults", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      name: "Custom",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: ["model"],
+      setCacheKey: false,
+      modelsDev: { data: {} },
+    })
+
+    expect(result.provider.options.setCacheKey).toBeUndefined()
+  })
 })
