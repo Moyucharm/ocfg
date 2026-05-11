@@ -112,4 +112,11 @@ addMutatingOptions(del.command("model <provider-id/model-id>").description("Dele
     await runAction(() => deleteModelCommand(modelRef, normalizeOptions(options) as never))
   })
 
+program.command("tui").description("Open the interactive terminal UI.").action(async () => {
+  await runAction(async () => {
+    const [{ render }, React, { App }] = await Promise.all([import("ink"), import("react"), import("./tui/app.js")])
+    render(React.createElement(App))
+  })
+})
+
 program.parseAsync(process.argv)
