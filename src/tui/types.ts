@@ -2,7 +2,19 @@ import type { ConfigDocument } from "../core/types.js"
 import type { ConfigScope, ConfigTarget, Diagnostic, EndpointKind, SecretRef } from "../core/types.js"
 import type { WriteConfigSafelyResult } from "../core/config-writer.js"
 
-export type TuiRoute = "home" | "select-config" | "doctor" | "provider-list" | "provider-edit" | "model-edit" | "diff-review"
+export type TuiRoute =
+  | "home"
+  | "select-config"
+  | "doctor"
+  | "provider-list"
+  | "provider-edit"
+  | "provider-edit-existing"
+  | "model-list"
+  | "model-edit-existing"
+  | "model-edit"
+  | "diff-review"
+
+export type ProviderListMode = "add" | "edit" | "delete"
 
 export type TuiAction = "doctor" | "add-provider" | "edit-provider" | "delete-provider" | "switch-config"
 

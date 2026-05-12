@@ -116,6 +116,10 @@ Exit criteria:
 
 ## Phase 6: Plugin Wrapper
 
+Status: deprecated for v1.
+
+Rationale: the standalone CLI/TUI is the actual product surface and can safely configure OpenCode files without a plugin. A plugin wrapper that only logs a hint to run the CLI adds little practical value, risks confusing users about in-OpenCode editing support, and should not block release preparation.
+
 Goal: make the tool feel part of the OpenCode plugin ecosystem without relying on unsupported TUI hooks.
 
 Deliverables:
@@ -130,6 +134,8 @@ Exit criteria:
 - Package can be referenced from OpenCode `plugin` config.
 - Plugin does not break OpenCode startup if the CLI is unavailable.
 - Plugin does not mutate config automatically.
+
+Decision: skip this phase unless a future OpenCode plugin API exposes a stable, meaningful capability that cannot be delivered by the standalone CLI/TUI.
 
 ## Phase 7: Runtime Reload Experiment
 

@@ -6,9 +6,9 @@ OpenCode Provider Editor is a TypeScript CLI/TUI tool, distributed through the O
 
 ## Core Decision
 
-Use route A: an independent CLI/TUI configuration tool with an optional OpenCode plugin wrapper.
+Use route A: an independent CLI/TUI configuration tool. The previously planned optional OpenCode plugin wrapper is deprecated for v1 because it does not add meaningful capability beyond the standalone tool.
 
-This avoids maintaining an OpenCode fork while still fitting the OpenCode plugin ecosystem. The plugin is an assistant layer, not the main UI surface.
+This avoids maintaining an OpenCode fork and keeps the product surface focused on the standalone CLI/TUI.
 
 ## Non-Goals
 
@@ -228,7 +228,7 @@ src/
     gemini-compatible.ts
     index.ts
   plugin/
-    index.ts
+    index.ts  # deprecated for v1; do not implement unless plugin value is re-established
 ```
 
 ## CLI Commands
@@ -312,6 +312,10 @@ Low severity:
 - Project config overrides global default model.
 
 ## Plugin Wrapper Scope
+
+Status: deprecated for v1.
+
+The standalone CLI/TUI already provides the safe configuration path. A plugin wrapper that only logs installation status or hints at running the CLI is not valuable enough to include in v1.
 
 The plugin wrapper is optional and intentionally small.
 

@@ -6,24 +6,36 @@ import { readConfig } from "../core/config-reader.js"
 import { validateConfig } from "../core/schema-validator.js"
 import { restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
-import { addProvider } from "../core/provider-editor.js"
-import { applyProviderEdit } from "../core/jsonc-editor.js"
+import { addProvider, updateModel, updateProvider } from "../core/provider-editor.js"
+import { applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import { HomeScreen } from "./screens/home.js"
 import { SelectConfigScreen } from "./screens/select-config.js"
 import { DoctorScreen } from "./screens/doctor.js"
 import { DiffReviewScreen } from "./screens/diff-review.js"
 import { ProviderListScreen } from "./screens/provider-list.js"
 import { ProviderEditScreen } from "./screens/provider-edit.js"
+import { ProviderEditExistingScreen } from "./screens/provider-edit-existing.js"
+import { ModelListScreen } from "./screens/model-list.js"
+import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
+import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
+import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
-import type { DiffReviewState, ProviderFlowDraft, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
+import type { DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
 
 export function App() {
   const { exit } = useApp()
   const [route, setRoute] = useState<TuiRoute>("home")
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
   const [message, setMessage] = useState<string>()
+  const [providerListMode, setProviderListMode] = useState<ProviderListMode>("add")
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
+  const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
+  const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
     targetPath: "No target selected",
     diff: createConfigDiff("", ""),
@@ -40,9 +52,31 @@ export function App() {
     setMessage(undefined)
     if (action === "doctor") setRoute("doctor")
     if (action === "switch-config") setRoute("select-config")
-    if (action === "add-provider") setRoute("provider-list")
-    if (action === "edit-provider" || action === "delete-provider") {
+    if (action === "add-provider") {
+      setProviderListMode("add")
+      setRoute("provider-list")
+    }
+    if (action === "edit-provider") {
+      setProviderListMode("edit")
+      setRoute("provider-list")
+    }
+    if (action === "delete-provider") {
       setMessage("This TUI flow is coming in the next wave. Use the CLI command for now.")
+    }
+  }
+
+  async function openExistingProviderEdit(providerID: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      setExistingProviderEdit({ id: providerID, provider })
+      setRoute("provider-edit-existing")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("home")
     }
   }
 
@@ -114,6 +148,79 @@ export function App() {
     }
   }
 
+  async function reviewExistingProviderEdit(providerID: string, draft: ExistingProviderEditDraft) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      const patch = buildExistingProviderEditPatch(provider, draft)
+      const nextConfig = updateProvider(document.data, providerID, patch)
+      const providerConfig = (nextConfig.provider as Record<string, unknown>)[providerID]
+      const nextText = applyProviderEdit(document, providerID, providerConfig)
+      setDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      })
+      setRoute("diff-review")
+    } catch (caught) {
+      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setRoute("diff-review")
+    }
+  }
+
+  async function openExistingModelEdit(providerID: string, modelID: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      const modelMap = isRecord(provider.models) ? provider.models : {}
+      const model = modelMap[modelID]
+      if (!isRecord(model)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
+      setExistingModelEdit({ providerID, modelID, model })
+      setRoute("model-edit-existing")
+    } catch (caught) {
+      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setRoute("diff-review")
+    }
+  }
+
+  async function reviewExistingModelEdit(providerID: string, modelID: string, draft: ExistingModelEditDraft) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      const modelMap = isRecord(provider.models) ? provider.models : {}
+      const model = modelMap[modelID]
+      if (!isRecord(model)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
+      const patch = buildExistingModelEditPatch(model, draft)
+      const nextConfig = updateModel(document.data, providerID, modelID, patch)
+      const nextProvider = (nextConfig.provider as Record<string, unknown>)[providerID]
+      if (!isRecord(nextProvider) || !isRecord(nextProvider.models)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
+      const nextModel = nextProvider.models[modelID]
+      const nextText = applyModelEdit(document, providerID, modelID, nextModel)
+      setDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      })
+      setRoute("diff-review")
+    } catch (caught) {
+      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setRoute("diff-review")
+    }
+  }
+
   async function confirmWrite() {
     setDiffReview(await commitPreparedWrite(diffReview))
   }
@@ -142,7 +249,15 @@ export function App() {
         />
       ) : null}
       {route === "doctor" ? <DoctorScreen selection={config} onBack={() => setRoute("home")} /> : null}
-      {route === "provider-list" ? <ProviderListScreen selection={config} onAdd={() => setRoute("provider-edit")} onBack={() => setRoute("home")} /> : null}
+      {route === "provider-list" ? (
+        <ProviderListScreen
+          selection={config}
+          mode={providerListMode}
+          onAdd={() => setRoute("provider-edit")}
+          onSelectProvider={(providerID) => void openExistingProviderEdit(providerID)}
+          onBack={() => setRoute("home")}
+        />
+      ) : null}
       {route === "provider-edit" ? (
         <ProviderEditScreen
           onBack={() => setRoute("home")}
@@ -154,6 +269,32 @@ export function App() {
       ) : null}
       {route === "model-edit" && providerDraft ? (
         <ModelEditScreen draft={providerDraft} onBack={() => setRoute("home")} onSave={saveProvider} onReviewDiff={reviewProviderDiff} />
+      ) : null}
+      {route === "provider-edit-existing" && existingProviderEdit ? (
+        <ProviderEditExistingScreen
+          providerID={existingProviderEdit.id}
+          provider={existingProviderEdit.provider}
+          onBack={() => setRoute("home")}
+          onEditModels={() => setRoute("model-list")}
+          onComplete={(draft) => void reviewExistingProviderEdit(existingProviderEdit.id, draft)}
+        />
+      ) : null}
+      {route === "model-list" && existingProviderEdit ? (
+        <ModelListScreen
+          selection={config}
+          providerID={existingProviderEdit.id}
+          onBack={() => setRoute("provider-edit-existing")}
+          onSelectModel={(modelID) => void openExistingModelEdit(existingProviderEdit.id, modelID)}
+        />
+      ) : null}
+      {route === "model-edit-existing" && existingModelEdit ? (
+        <ModelEditExistingScreen
+          providerID={existingModelEdit.providerID}
+          modelID={existingModelEdit.modelID}
+          model={existingModelEdit.model}
+          onBack={() => setRoute("model-list")}
+          onComplete={(draft) => void reviewExistingModelEdit(existingModelEdit.providerID, existingModelEdit.modelID, draft)}
+        />
       ) : null}
       {route === "diff-review" ? (
         <DiffReviewScreen
