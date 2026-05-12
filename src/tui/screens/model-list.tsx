@@ -11,7 +11,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function ModelListScreen(props: {
   selection: TuiConfigSelection
   providerID: string
+  onAddModel: () => void
   onSelectModel: (modelID: string) => void
+  onDeleteModel: (modelID: string) => void
   onBack: () => void
 }) {
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([])
@@ -22,11 +24,20 @@ export function ModelListScreen(props: {
 
   useInput((input, key) => {
     if (input === "q" || input === "b") props.onBack()
-    if (models.length === 0) return
-    if (key.upArrow) setSelected((current) => (current === 0 ? models.length - 1 : current - 1))
-    if (key.downArrow) setSelected((current) => (current === models.length - 1 ? 0 : current + 1))
+    const itemCount = models.length + 1
+    if (key.upArrow) setSelected((current) => (current === 0 ? itemCount - 1 : current - 1))
+    if (key.downArrow) setSelected((current) => (current === itemCount - 1 ? 0 : current + 1))
+    if (input === "d") {
+      const model = models[selected - 1]
+      if (model) props.onDeleteModel(model.id)
+      return
+    }
     if (key.return) {
-      const model = models[selected]
+      if (selected === 0) {
+        props.onAddModel()
+        return
+      }
+      const model = models[selected - 1]
       if (model) props.onSelectModel(model.id)
     }
   })
@@ -68,13 +79,14 @@ export function ModelListScreen(props: {
       <Text bold>Edit Model</Text>
       <Text dimColor>{targetPath || "No config target"}</Text>
       <Text dimColor>Provider: {props.providerID}</Text>
-      {models.length === 0 ? <Text color="yellow">No models configured for this provider.</Text> : null}
+      {models.length === 0 ? <Text color="yellow">No models configured for this provider yet.</Text> : null}
+      <Text color={selected === 0 ? "green" : undefined}>{selected === 0 ? "›" : " "} Add new model</Text>
       {models.map((model, index) => (
-        <Text key={model.id} color={index === selected ? "green" : undefined}>
-          {index === selected ? "›" : " "} {model.id}{model.name ? ` (${model.name})` : ""}
+        <Text key={model.id} color={index + 1 === selected ? "green" : undefined}>
+          {index + 1 === selected ? "›" : " "} {model.id}{model.name ? ` (${model.name})` : ""}
         </Text>
       ))}
-      <Text dimColor>Enter selects a model. b, q, or Esc returns.</Text>
+      <Text dimColor>Enter adds or edits. d deletes the selected model. b, q, or Esc returns.</Text>
     </Box>
   )
 }

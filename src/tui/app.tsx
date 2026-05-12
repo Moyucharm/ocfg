@@ -6,8 +6,8 @@ import { readConfig } from "../core/config-reader.js"
 import { validateConfig } from "../core/schema-validator.js"
 import { restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
-import { addProvider, updateModel, updateProvider } from "../core/provider-editor.js"
-import { applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
+import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
+import { applyConfigEdit, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import { HomeScreen } from "./screens/home.js"
 import { SelectConfigScreen } from "./screens/select-config.js"
 import { DoctorScreen } from "./screens/doctor.js"
@@ -18,10 +18,12 @@ import { ProviderEditExistingScreen } from "./screens/provider-edit-existing.js"
 import { ModelListScreen } from "./screens/model-list.js"
 import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
+import { ModelAddScreen } from "./screens/model-add.js"
+import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
-import type { DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
+import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -36,6 +38,8 @@ export function App() {
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
   const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
+  const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
     targetPath: "No target selected",
     diff: createConfigDiff("", ""),
@@ -61,8 +65,15 @@ export function App() {
       setRoute("provider-list")
     }
     if (action === "delete-provider") {
-      setMessage("This TUI flow is coming in the next wave. Use the CLI command for now.")
+      setProviderListMode("delete")
+      setRoute("provider-list")
     }
+  }
+
+  function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute) {
+    setDiffReturnRoute(returnRoute)
+    setDiffReview(review)
+    setRoute("diff-review")
   }
 
   async function openExistingProviderEdit(providerID: string) {
@@ -77,6 +88,21 @@ export function App() {
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
       setRoute("home")
+    }
+  }
+
+  async function openModelAdd(providerID: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      setExistingProviderEdit({ id: providerID, provider })
+      setRoute("model-add")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("model-list")
     }
   }
 
@@ -131,17 +157,18 @@ export function App() {
     try {
       const review = await prepareProviderWriteState(generated)
       setDiffReview(await commitPreparedWrite(review))
+      setDiffReturnRoute("home")
       setRoute("diff-review")
     } catch (caught) {
       setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setDiffReturnRoute("home")
       setRoute("diff-review")
     }
   }
 
   async function reviewProviderDiff(generated: GeneratedProviderDraft) {
     try {
-      setDiffReview(await prepareProviderWriteState(generated))
-      setRoute("diff-review")
+      openDiffReview(await prepareProviderWriteState(generated), "model-edit")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
       setRoute("home")
@@ -159,17 +186,15 @@ export function App() {
       const nextConfig = updateProvider(document.data, providerID, patch)
       const providerConfig = (nextConfig.provider as Record<string, unknown>)[providerID]
       const nextText = applyProviderEdit(document, providerID, providerConfig)
-      setDiffReview({
+      openDiffReview({
         targetPath: target.path,
         diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
         document,
         nextConfig,
         nextText,
-      })
-      setRoute("diff-review")
+      }, "provider-edit-existing")
     } catch (caught) {
-      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
-      setRoute("diff-review")
+      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "provider-edit-existing")
     }
   }
 
@@ -186,8 +211,7 @@ export function App() {
       setExistingModelEdit({ providerID, modelID, model })
       setRoute("model-edit-existing")
     } catch (caught) {
-      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
-      setRoute("diff-review")
+      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
     }
   }
 
@@ -207,17 +231,109 @@ export function App() {
       if (!isRecord(nextProvider) || !isRecord(nextProvider.models)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
       const nextModel = nextProvider.models[modelID]
       const nextText = applyModelEdit(document, providerID, modelID, nextModel)
-      setDiffReview({
+      openDiffReview({
         targetPath: target.path,
         diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
         document,
         nextConfig,
         nextText,
-      })
-      setRoute("diff-review")
+      }, "model-list")
     } catch (caught) {
-      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
-      setRoute("diff-review")
+      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
+    }
+  }
+
+  async function reviewAddedModels(providerID: string, generated: GeneratedProviderDraft) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      let nextConfig = document.data
+      for (const [modelID, model] of Object.entries(generated.provider.models)) {
+        nextConfig = addModel(nextConfig, providerID, modelID, model)
+      }
+      const nextProvider = (nextConfig.provider as Record<string, unknown>)[providerID]
+      if (!isRecord(nextProvider) || !isRecord(nextProvider.models)) throw new Error(`Provider "${providerID}" does not exist`)
+      const nextText = applyConfigEdit(document, ["provider", providerID, "models"], nextProvider.models)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "model-list")
+    } catch (caught) {
+      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
+    }
+  }
+
+  async function beginProviderDelete(providerID: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      setDeleteTarget({ kind: "provider", providerID, references: findProviderReferences(document.data, providerID) })
+      setRoute("delete-confirm")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("home")
+    }
+  }
+
+  async function beginModelDelete(providerID: string, modelID: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const providerMap = isRecord(document.data.provider) ? document.data.provider : {}
+      const provider = providerMap[providerID]
+      if (!isRecord(provider)) throw new Error(`Provider "${providerID}" does not exist`)
+      const modelMap = isRecord(provider.models) ? provider.models : {}
+      const model = modelMap[modelID]
+      if (!isRecord(model)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
+      setDeleteTarget({ kind: "model", providerID, modelID, references: findModelReferences(document.data, providerID, modelID) })
+      setRoute("delete-confirm")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("model-list")
+    }
+  }
+
+  async function confirmDelete(token?: string) {
+    if (!deleteTarget) return
+    const expectedToken = deleteTarget.kind === "provider" ? `delete:${deleteTarget.providerID}` : `delete:${deleteTarget.providerID}/${deleteTarget.modelID}`
+    if (deleteTarget.references.length > 0 && token !== expectedToken) {
+      setDeleteTarget({ ...deleteTarget, error: `Confirmation token must be exactly "${expectedToken}"` })
+      return
+    }
+
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      if (deleteTarget.kind === "provider") {
+        const nextConfig = deleteProvider(document.data, deleteTarget.providerID, { confirmReferencedDelete: token })
+        const nextText = applyConfigEdit(document, ["provider", deleteTarget.providerID], undefined)
+        openDiffReview({
+          targetPath: target.path,
+          diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+          document,
+          nextConfig,
+          nextText,
+        }, "home")
+        return
+      }
+
+      const nextConfig = deleteModel(document.data, deleteTarget.providerID, deleteTarget.modelID, { confirmReferencedDelete: token })
+      const nextText = applyConfigEdit(document, ["provider", deleteTarget.providerID, "models", deleteTarget.modelID], undefined)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "model-list")
+    } catch (caught) {
+      setDeleteTarget({ ...deleteTarget, error: caught instanceof Error ? caught.message : String(caught) })
     }
   }
 
@@ -254,7 +370,7 @@ export function App() {
           selection={config}
           mode={providerListMode}
           onAdd={() => setRoute("provider-edit")}
-          onSelectProvider={(providerID) => void openExistingProviderEdit(providerID)}
+          onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
           onBack={() => setRoute("home")}
         />
       ) : null}
@@ -283,8 +399,18 @@ export function App() {
         <ModelListScreen
           selection={config}
           providerID={existingProviderEdit.id}
+          onAddModel={() => void openModelAdd(existingProviderEdit.id)}
           onBack={() => setRoute("provider-edit-existing")}
           onSelectModel={(modelID) => void openExistingModelEdit(existingProviderEdit.id, modelID)}
+          onDeleteModel={(modelID) => void beginModelDelete(existingProviderEdit.id, modelID)}
+        />
+      ) : null}
+      {route === "model-add" && existingProviderEdit ? (
+        <ModelAddScreen
+          providerID={existingProviderEdit.id}
+          provider={existingProviderEdit.provider}
+          onBack={() => setRoute("model-list")}
+          onReviewDiff={(generated) => void reviewAddedModels(existingProviderEdit.id, generated)}
         />
       ) : null}
       {route === "model-edit-existing" && existingModelEdit ? (
@@ -296,10 +422,17 @@ export function App() {
           onComplete={(draft) => void reviewExistingModelEdit(existingModelEdit.providerID, existingModelEdit.modelID, draft)}
         />
       ) : null}
+      {route === "delete-confirm" && deleteTarget ? (
+        <DeleteConfirmScreen
+          target={deleteTarget}
+          onCancel={() => setRoute(deleteTarget.kind === "provider" ? "provider-list" : "model-list")}
+          onConfirm={(token) => void confirmDelete(token)}
+        />
+      ) : null}
       {route === "diff-review" ? (
         <DiffReviewScreen
           review={diffReview}
-          onCancel={() => setRoute("home")}
+          onCancel={() => setRoute(diffReturnRoute)}
           onConfirm={confirmWrite}
         />
       ) : null}

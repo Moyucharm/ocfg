@@ -66,6 +66,28 @@ describe("jsonc editor", () => {
     expect(parse(nextText).provider.custom.models.model.limit.context).toBe(10)
   })
 
+  test("replaces provider models map while preserving outer comments", () => {
+    const source = `{
+  "provider": {
+    // keep provider comment
+    "custom": {
+      "models": {
+        "old": { "name": "Old" }
+      }
+    }
+  }
+}
+`
+    const nextText = applyConfigEdit(doc(source), ["provider", "custom", "models"], {
+      old: { name: "Old" },
+      fresh: { limit: { context: 10, output: 2 } },
+    })
+
+    expect(nextText).toContain("// keep provider comment")
+    expect(parse(nextText).provider.custom.models.old.name).toBe("Old")
+    expect(parse(nextText).provider.custom.models.fresh.limit.output).toBe(2)
+  })
+
   test("creates valid text from empty documents", () => {
     const nextText = applyProviderEdit(
       {

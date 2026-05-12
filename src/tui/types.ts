@@ -10,11 +10,28 @@ export type TuiRoute =
   | "provider-edit"
   | "provider-edit-existing"
   | "model-list"
+  | "model-add"
   | "model-edit-existing"
+  | "delete-confirm"
   | "model-edit"
   | "diff-review"
 
 export type ProviderListMode = "add" | "edit" | "delete"
+
+export type DeleteTargetState =
+  | {
+      kind: "provider"
+      providerID: string
+      references: string[]
+      error?: string
+    }
+  | {
+      kind: "model"
+      providerID: string
+      modelID: string
+      references: string[]
+      error?: string
+    }
 
 export type TuiAction = "doctor" | "add-provider" | "edit-provider" | "delete-provider" | "switch-config"
 
