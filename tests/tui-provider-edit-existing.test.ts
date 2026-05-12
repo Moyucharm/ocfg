@@ -20,19 +20,10 @@ describe("existing provider TUI edit helper", () => {
     expect(patch.options).toEqual({ apiKey: "{env:OLD}", timeout: 10, setCacheKey: true, baseURL: "https://example.com/v1" })
   })
 
-  test("renders safe secret references", () => {
-    expect(buildExistingProviderEditPatch({ options: {} }, { apiKey: { type: "env", name: "API_KEY" } }).options?.apiKey).toBe(
-      "{env:API_KEY}",
-    )
+  test("renders the TUI file secret reference", () => {
     expect(buildExistingProviderEditPatch({ options: {} }, { apiKey: { type: "file", path: "~/.secret/key" } }).options?.apiKey).toBe(
       "{file:~/.secret/key}",
     )
-  })
-
-  test("requires explicit plaintext secret references", () => {
-    expect(
-      buildExistingProviderEditPatch({ options: {} }, { apiKey: { type: "plaintext", value: "sk-test", explicit: true } }).options?.apiKey,
-    ).toBe("sk-test")
   })
 
   test("empty baseURL removes existing baseURL", () => {

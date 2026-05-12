@@ -1,26 +1,18 @@
 import React, { useState } from "react"
 import { Box, Text, useInput } from "ink"
-import type { SecretRef } from "../../core/types.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 
-type Step = "menu" | "name" | "npm" | "base-url" | "api-key-strategy" | "api-key-value" | "plaintext-confirm" | "cache"
+type Step = "menu" | "name" | "npm" | "base-url" | "api-key-file" | "cache"
 type Field = "name" | "npm" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
-type SecretStrategy = "env" | "file" | "plaintext"
 
 const fields: Array<{ field: Field; label: string }> = [
   { field: "name", label: "Display name" },
   { field: "npm", label: "NPM package" },
   { field: "base-url", label: "Base URL" },
-  { field: "api-key", label: "API key reference" },
+  { field: "api-key", label: "API key file" },
   { field: "cache", label: "setCacheKey" },
   { field: "edit-models", label: "Edit models" },
   { field: "review", label: "Review diff" },
-]
-
-const secretStrategies: Array<{ strategy: SecretStrategy; label: string }> = [
-  { strategy: "env", label: "Environment variable" },
-  { strategy: "file", label: "File reference" },
-  { strategy: "plaintext", label: "Plaintext advanced" },
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,12 +45,9 @@ export function ProviderEditExistingScreen(props: {
 }) {
   const [step, setStep] = useState<Step>("menu")
   const [fieldIndex, setFieldIndex] = useState(0)
-  const [strategyIndex, setStrategyIndex] = useState(0)
   const [cacheIndex, setCacheIndex] = useState(cacheValue(props.provider) ? 1 : 0)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
   const [inputValue, setInputValue] = useState("")
-  const [pendingPlaintext, setPendingPlaintext] = useState("")
-  const [selectedStrategy, setSelectedStrategy] = useState<SecretStrategy>("env")
   const [error, setError] = useState<string>()
 
   const currentName = typeof props.provider.name === "string" ? props.provider.name : ""
@@ -89,7 +78,12 @@ export function ProviderEditExistingScreen(props: {
       setInputValue(draft.baseURL ?? currentBaseURL)
       setStep("base-url")
     }
-    if (field === "api-key") setStep("api-key-strategy")
+    if (field === "api-key") {
+      const currentFileRef = /^\{file:(.*)\}$/.exec(currentApiKey)?.[1] ?? ""
+      const draftFileRef = draft.apiKey?.type === "file" ? draft.apiKey.path : undefined
+      setInputValue(draftFileRef ?? currentFileRef)
+      setStep("api-key-file")
+    }
     if (field === "cache") setStep("cache")
   }
 
@@ -108,39 +102,13 @@ export function ProviderEditExistingScreen(props: {
     setStep("menu")
   }
 
-  function secretFromInput(strategy: SecretStrategy, value: string): SecretRef | undefined {
-    if (strategy === "env") return value ? { type: "env", name: value } : undefined
-    if (strategy === "file") return value ? { type: "file", path: value } : undefined
-    return value ? { type: "plaintext", value, explicit: true } : undefined
-  }
-
-  function saveSecretValue() {
+  function saveApiKeyFile() {
     const value = inputValue.trim()
-    const ref = secretFromInput(selectedStrategy, value)
-    if (!ref) {
-      setError("API key reference value is required.")
+    if (!value) {
+      setError("API key file path is required.")
       return
     }
-    if (selectedStrategy === "plaintext") {
-      setPendingPlaintext(value)
-      setInputValue("")
-      setStep("plaintext-confirm")
-      return
-    }
-    setDraft((current) => ({ ...current, apiKey: ref }))
-    setInputValue("")
-    setStep("menu")
-  }
-
-  function confirmPlaintext() {
-    if (inputValue !== "PLAINTEXT") {
-      setError("Type PLAINTEXT to confirm plaintext API key output.")
-      return
-    }
-    const ref = secretFromInput(selectedStrategy, pendingPlaintext)
-    if (!ref || ref.type !== "plaintext") return
-    setDraft((current) => ({ ...current, apiKey: ref }))
-    setPendingPlaintext("")
+    setDraft((current) => ({ ...current, apiKey: { type: "file", path: value } }))
     setInputValue("")
     setStep("menu")
   }
@@ -156,17 +124,6 @@ export function ProviderEditExistingScreen(props: {
       if (key.return) startField(fields[fieldIndex]!.field)
       return
     }
-    if (step === "api-key-strategy") {
-      if (key.upArrow || key.leftArrow) setStrategyIndex((current) => (current === 0 ? secretStrategies.length - 1 : current - 1))
-      if (key.downArrow || key.rightArrow) setStrategyIndex((current) => (current === secretStrategies.length - 1 ? 0 : current + 1))
-      if (key.return) {
-        const strategy = secretStrategies[strategyIndex]!.strategy
-        setSelectedStrategy(strategy)
-        setInputValue("")
-        setStep("api-key-value")
-      }
-      return
-    }
     if (step === "cache") {
       if (key.upArrow || key.leftArrow || key.downArrow || key.rightArrow) setCacheIndex((current) => (current === 0 ? 1 : 0))
       if (key.return) {
@@ -178,8 +135,7 @@ export function ProviderEditExistingScreen(props: {
     if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
     else if (key.return) {
       setError(undefined)
-      if (step === "api-key-value") saveSecretValue()
-      else if (step === "plaintext-confirm") confirmPlaintext()
+      if (step === "api-key-file") saveApiKeyFile()
       else saveTextField()
     } else setInputValue((current) => appendInput(current, input))
   })
@@ -201,14 +157,7 @@ export function ProviderEditExistingScreen(props: {
         </Box>
       ) : null}
       {["name", "npm", "base-url"].includes(step) ? <Text>{step}: {inputValue || "_"}</Text> : null}
-      {step === "api-key-strategy" ? (
-        <Box flexDirection="column">
-          <Text>Select API key strategy:</Text>
-          {secretStrategies.map((item, index) => <Text key={item.strategy} color={index === strategyIndex ? "green" : undefined}>{index === strategyIndex ? "›" : " "} {item.label}</Text>)}
-        </Box>
-      ) : null}
-      {step === "api-key-value" ? <Text>{selectedStrategy} value: {selectedStrategy === "plaintext" ? "*".repeat(inputValue.length) || "_" : inputValue || "_"}</Text> : null}
-      {step === "plaintext-confirm" ? <Text color="yellow">Type PLAINTEXT to confirm plaintext output: {inputValue || "_"}</Text> : null}
+      {step === "api-key-file" ? <Text>API key file path: {inputValue || "_"}</Text> : null}
       {step === "cache" ? (
         <Box flexDirection="column">
           <Text>Set provider.options.setCacheKey?</Text>
