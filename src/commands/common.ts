@@ -1,9 +1,10 @@
 import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
 import { hasHighSeverity } from "../core/doctor.js"
+import { restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { validateConfig } from "../core/schema-validator.js"
 import { writeConfigSafely, type ValidationResult, type WriteConfigSafelyResult } from "../core/config-writer.js"
-import type { ConfigDocument, ConfigScope, Diagnostic, EndpointKind, SecretRef } from "../core/types.js"
+import type { ConfigDocument, ConfigScope, Diagnostic, EndpointKind } from "../core/types.js"
 
 export type ConfigCommandOptions = {
   configScope?: ConfigScope
@@ -17,11 +18,8 @@ export type MutatingCommandOptions = ConfigCommandOptions & {
   validate?: (config: Record<string, unknown>) => Promise<ValidationResult> | ValidationResult
 }
 
-export type SecretCommandOptions = {
-  apiKeyEnv?: string
-  apiKeyFile?: string
-  apiKeyPlaintext?: string
-  confirmPlaintext?: boolean
+export type ManagedSecretCommandOptions = {
+  apiKey?: string
 }
 
 const endpointKinds = new Set<EndpointKind>([
@@ -63,13 +61,10 @@ export function parseEndpointKind(value: string): EndpointKind {
   throw new Error(`Invalid endpoint kind "${value}"`)
 }
 
-export function parseSecretRef(options: SecretCommandOptions): SecretRef {
-  const provided = [options.apiKeyEnv, options.apiKeyFile, options.apiKeyPlaintext].filter((value) => value !== undefined)
-  if (provided.length !== 1) throw new Error("Exactly one API key option is required")
-  if (options.apiKeyEnv) return { type: "env", name: options.apiKeyEnv }
-  if (options.apiKeyFile) return { type: "file", path: options.apiKeyFile }
-  if (options.confirmPlaintext === true) return { type: "plaintext", value: options.apiKeyPlaintext!, explicit: true }
-  return { type: "plaintext", value: options.apiKeyPlaintext!, explicit: false } as unknown as SecretRef
+export function parseManagedApiKeyValue(options: ManagedSecretCommandOptions): string {
+  const value = options.apiKey?.trim()
+  if (!value) throw new Error("--api-key is required")
+  return value
 }
 
 export async function validateForWrite(
@@ -85,17 +80,29 @@ export async function writeMutation(input: {
   options: MutatingCommandOptions
   nextConfig: Record<string, unknown>
   nextText: string
+  secretFile?: {
+    path: string
+    value: string
+  }
 }) {
-  const result = await writeConfigSafely({
-    document: input.document,
-    nextConfig: input.nextConfig,
-    nextText: input.nextText,
-    dryRun: input.options.dryRun,
-    validate: (config) => validateForWrite(config, input.options.validate),
-  })
-  printWriteResult(result, input.options.json)
-  setExitCodeForDiagnostics(result.diagnostics)
-  return result
+  const secretSnapshot = input.secretFile ? await snapshotSecretFile(input.secretFile.path) : undefined
+  try {
+    if (input.secretFile && !input.options.dryRun) await writeSecretFileSafely(input.secretFile)
+    const result = await writeConfigSafely({
+      document: input.document,
+      nextConfig: input.nextConfig,
+      nextText: input.nextText,
+      dryRun: input.options.dryRun,
+      validate: (config) => validateForWrite(config, input.options.validate),
+    })
+    if (result.diagnostics.length > 0 && secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
+    printWriteResult(result, input.options.json)
+    setExitCodeForDiagnostics(result.diagnostics)
+    return result
+  } catch (caught) {
+    if (secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
+    throw caught
+  }
 }
 
 export function printWriteResult(result: WriteConfigSafelyResult, json = false) {

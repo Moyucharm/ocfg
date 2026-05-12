@@ -8,6 +8,7 @@ import { addProviderCommand } from "../src/commands/add.js"
 import { deleteModelCommand, deleteProviderCommand } from "../src/commands/delete.js"
 import { doctorCommand } from "../src/commands/doctor.js"
 import { editModelCommand, editProviderCommand } from "../src/commands/edit.js"
+import { defaultSecretFilePath, expandHomePath } from "../src/core/secret-file.js"
 import { validateCommand } from "../src/commands/validate.js"
 import type { ValidationResult } from "../src/core/config-writer.js"
 
@@ -35,10 +36,13 @@ describe("commands", () => {
   let exitCode: string | number | undefined
   let log: ReturnType<typeof vi.spyOn>
   let error: ReturnType<typeof vi.spyOn>
+  let originalHome: string | undefined
 
-  beforeEach(() => {
+  beforeEach(async () => {
     exitCode = process.exitCode
     process.exitCode = undefined
+    originalHome = process.env.HOME
+    process.env.HOME = await mkdtemp(path.join(os.tmpdir(), "oc-provider-editor-home-"))
     log = vi.spyOn(console, "log").mockImplementation(() => undefined)
     error = vi.spyOn(console, "error").mockImplementation(() => undefined)
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({}), { status: 200 }))
@@ -46,6 +50,7 @@ describe("commands", () => {
 
   afterEach(() => {
     process.exitCode = exitCode
+    process.env.HOME = originalHome
     log.mockRestore()
     error.mockRestore()
     vi.unstubAllGlobals()
@@ -75,8 +80,8 @@ describe("commands", () => {
 
     await addProviderCommand("custom", {
       configPath: filePath,
-      endpointKind: "openai-compatible",
-      apiKeyEnv: "CUSTOM_API_KEY",
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
       model: ["model"],
       dryRun: true,
       validate: valid,
@@ -91,29 +96,22 @@ describe("commands", () => {
 
     await addProviderCommand("custom", {
       configPath: filePath,
-      endpointKind: "gemini-compatible",
-      apiKeyFile: "~/.secrets/gemini",
+      channelType: "gemini-compatible",
+      apiKey: "sk-gemini-test",
       model: ["gemini-2.5-pro"],
       validate: valid,
     })
 
     const config = parse(await readFile(filePath, "utf8"))
     expect(config.provider.custom.npm).toBe("@ai-sdk/google")
-    expect(config.provider.custom.options.apiKey).toBe("{file:~/.secrets/gemini}")
+    expect(config.provider.custom.options.apiKey).toBe(`{file:${defaultSecretFilePath("custom")}}`)
+    await expect(readFile(expandHomePath(defaultSecretFilePath("custom")), "utf8")).resolves.toBe("sk-gemini-test")
   })
 
-  test("add provider refuses unconfirmed plaintext secrets", async () => {
+  test("add provider requires api key content", async () => {
     const filePath = await tempFile()
 
-    await expect(
-      addProviderCommand("custom", {
-        configPath: filePath,
-        endpointKind: "openai-compatible",
-        apiKeyPlaintext: "sk-test1234567890",
-        model: ["model"],
-        validate: valid,
-      }),
-    ).rejects.toThrow()
+    await expect(addProviderCommand("custom", { configPath: filePath, channelType: "openai-compatible", model: ["model"], validate: valid })).rejects.toThrow()
     await expect(stat(filePath)).rejects.toThrow()
   })
 
@@ -139,6 +137,43 @@ describe("commands", () => {
     expect(config.provider.custom.name).toBe("New")
     expect(config.provider.custom.options.timeout).toBe(10)
     expect(config.provider.custom.options.baseURL).toBe("https://example.com/v1")
+  })
+
+  test("edit provider rewrites channel type and managed api key", async () => {
+    const filePath = await writeConfig(`{
+  "provider": {
+    "custom": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "apiKey": "{env:OLD}" },
+      "models": { "model": {} }
+    }
+  }
+}
+`)
+
+    await editProviderCommand("custom", { configPath: filePath, channelType: "openai-responses", apiKey: "sk-updated", validate: valid })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.npm).toBe("@ai-sdk/openai")
+    expect(config.provider.custom.options.apiKey).toBe(`{file:${defaultSecretFilePath("custom")}}`)
+    await expect(readFile(expandHomePath(defaultSecretFilePath("custom")), "utf8")).resolves.toBe("sk-updated")
+  })
+
+  test("edit provider requires channel type when current npm is unknown", async () => {
+    const filePath = await writeConfig(`{
+  "provider": {
+    "custom": {
+      "npm": "unknown-package",
+      "options": { "apiKey": "{env:OLD}" },
+      "models": { "model": {} }
+    }
+  }
+}
+`)
+
+    await expect(editProviderCommand("custom", { configPath: filePath, name: "New", validate: valid })).rejects.toThrow(
+      "Unknown provider type; re-run with --channel-type to continue",
+    )
   })
 
   test("edit model updates limits without dropping name", async () => {
@@ -190,8 +225,8 @@ describe("commands", () => {
 
     await addProviderCommand("custom", {
       configPath: filePath,
-      endpointKind: "openai-compatible",
-      apiKeyEnv: "CUSTOM_API_KEY",
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
       model: ["model"],
       validate: invalid,
     })

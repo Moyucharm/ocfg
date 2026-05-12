@@ -1,19 +1,21 @@
 import { applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
+import { recommendedNpmForChannelType } from "../core/channel-types.js"
+import { defaultSecretFilePath } from "../core/secret-file.js"
 import { updateModel, updateProvider } from "../core/provider-editor.js"
-import { renderSecretRef } from "../core/secret-strategy.js"
-import type { ModelDraft, ProviderDraft } from "../core/types.js"
+import type { EndpointKind, ModelDraft, ProviderDraft } from "../core/types.js"
 import {
   loadConfigForCommand,
-  parseSecretRef,
+  parseManagedApiKeyValue,
+  parseEndpointKind,
+  type ManagedSecretCommandOptions,
   writeMutation,
   type MutatingCommandOptions,
-  type SecretCommandOptions,
 } from "./common.js"
 
 export type EditProviderCommandOptions = MutatingCommandOptions &
-  Partial<SecretCommandOptions> & {
+  Partial<ManagedSecretCommandOptions> & {
     name?: string
-    npm?: string
+    channelType?: string
     baseUrl?: string
     setCacheKey?: boolean
   }
@@ -53,7 +55,15 @@ function parseModelRef(ref: string) {
 }
 
 function hasSecretOption(options: EditProviderCommandOptions) {
-  return options.apiKeyEnv !== undefined || options.apiKeyFile !== undefined || options.apiKeyPlaintext !== undefined
+  return options.apiKey !== undefined
+}
+
+function inferEndpointKindFromNpm(npm: unknown): EndpointKind | undefined {
+  if (typeof npm !== "string") return undefined
+  for (const kind of ["openai-compatible", "openai-responses", "anthropic-compatible", "gemini-compatible"] as const) {
+    if (recommendedNpmForChannelType(kind) === npm) return kind
+  }
+  return undefined
 }
 
 function parseNumberOption(value: string | undefined, label: string) {
@@ -67,9 +77,11 @@ export async function editProviderCommand(providerID: string, options: EditProvi
   const { document } = await loadConfigForCommand(options)
   const current = existingProvider(document.data, providerID)
   const patch: Partial<Omit<ProviderDraft, "id" | "models">> = {}
+  const currentKind = inferEndpointKindFromNpm(current.npm)
 
   if (options.name !== undefined) patch.name = options.name
-  if (options.npm !== undefined) patch.npm = options.npm
+  if (!currentKind && options.channelType === undefined) throw new Error("Unknown provider type; re-run with --channel-type to continue")
+  if (options.channelType !== undefined) patch.npm = recommendedNpmForChannelType(parseEndpointKind(options.channelType))
 
   const optionsPatch: ProviderDraft["options"] = {
     ...(isRecord(current.options) ? current.options : {}),
@@ -83,8 +95,9 @@ export async function editProviderCommand(providerID: string, options: EditProvi
     optionsPatch.setCacheKey = options.setCacheKey
     hasOptionsPatch = true
   }
+  const secretFilePath = defaultSecretFilePath(providerID)
   if (hasSecretOption(options)) {
-    optionsPatch.apiKey = renderSecretRef(parseSecretRef(options as SecretCommandOptions))
+    optionsPatch.apiKey = `{file:${secretFilePath}}`
     hasOptionsPatch = true
   }
   if (hasOptionsPatch) patch.options = optionsPatch
@@ -92,7 +105,13 @@ export async function editProviderCommand(providerID: string, options: EditProvi
   const nextConfig = updateProvider(document.data, providerID, patch)
   const nextText = applyProviderEdit(document, providerID, (nextConfig.provider as Record<string, unknown>)[providerID])
 
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writeMutation({
+    document,
+    options,
+    nextConfig,
+    nextText,
+    secretFile: hasSecretOption(options) ? { path: secretFilePath, value: parseManagedApiKeyValue(options) } : undefined,
+  })
 }
 
 export async function editModelCommand(modelRef: string, options: EditModelCommandOptions) {

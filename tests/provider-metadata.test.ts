@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { describe, expect, test } from "vitest"
-import { inferEndpointKindFromProvider, providerApiKeyRef, providerBaseURL, resolveProviderApiKey } from "../src/tui/provider-metadata.js"
+import { inferEndpointKindFromProvider, providerApiKeyRef, providerBaseURL, resolveProviderApiKey, tryInferEndpointKindFromProvider } from "../src/tui/provider-metadata.js"
 
 describe("provider metadata helpers", () => {
   test("infers endpoint kind from provider npm", () => {
@@ -31,5 +31,9 @@ describe("provider metadata helpers", () => {
 
   test("passes through plaintext api keys", async () => {
     await expect(resolveProviderApiKey({ options: { apiKey: "sk-plain-test" } })).resolves.toBe("sk-plain-test")
+  })
+
+  test("reports unknown provider types without throwing", () => {
+    expect(tryInferEndpointKindFromProvider({ npm: "unknown-package" }).message).toContain("Unknown provider type")
   })
 })

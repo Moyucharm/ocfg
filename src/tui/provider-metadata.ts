@@ -52,9 +52,15 @@ export async function resolveProviderApiKey(provider: Record<string, unknown>) {
 }
 
 export function inferEndpointKindFromProvider(provider: Record<string, unknown>): EndpointKind {
+  const result = tryInferEndpointKindFromProvider(provider)
+  if (result.kind) return result.kind
+  throw new Error(result.message)
+}
+
+export function tryInferEndpointKindFromProvider(provider: Record<string, unknown>): { kind?: EndpointKind; message?: string } {
   const npm = typeof provider.npm === "string" ? provider.npm : undefined
   for (const [kind, template] of Object.entries(endpointTemplates) as Array<[EndpointKind, { recommendedNpm: string }]>) {
-    if (template.recommendedNpm === npm) return kind
+    if (template.recommendedNpm === npm) return { kind }
   }
-  throw new Error(`Provider npm "${npm ?? "(missing)"}" does not map to a supported endpoint kind`)
+  return { message: `Unknown provider type for npm "${npm ?? "(missing)"}". Please choose a channel type before saving.` }
 }

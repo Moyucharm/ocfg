@@ -1,15 +1,14 @@
 import React, { useState } from "react"
 import { Box, Text, useInput } from "ink"
-import type { EndpointKind, SecretRef } from "../../core/types.js"
+import { channelTypeOptions } from "../../core/channel-types.js"
+import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import type { ProviderFlowDraft } from "../types.js"
 
 type Step = "endpoint" | "provider-id" | "name" | "base-url" | "api-key" | "cache"
 
-const endpointKinds: EndpointKind[] = ["openai-compatible", "openai-responses", "anthropic-compatible", "gemini-compatible"]
-
-function defaultCache(kind: EndpointKind) {
+function defaultCache(kind: ProviderFlowDraft["endpointKind"]) {
   return kind === "openai-compatible" || kind === "anthropic-compatible"
 }
 
@@ -29,10 +28,11 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const [apiKeyValue, setApiKeyValue] = useState("")
   const [error, setError] = useState<string>()
 
-  const endpointKind = endpointKinds[endpointIndex]!
+  const endpointKind = channelTypeOptions[endpointIndex]!.kind
   const cacheOptions = [defaultCache(endpointKind), !defaultCache(endpointKind)]
   const setCacheKey = cacheOptions[cacheIndex]!
   const endpointTemplate = getEndpointTemplate(endpointKind)
+  const channelType = channelTypeOptions[endpointIndex]!
 
   function currentInput() {
     if (step === "provider-id") return providerID
@@ -82,11 +82,11 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       return
     }
     if (key.upArrow || key.leftArrow) {
-      if (step === "endpoint") setEndpointIndex((current) => (current === 0 ? endpointKinds.length - 1 : current - 1))
+      if (step === "endpoint") setEndpointIndex((current) => (current === 0 ? channelTypeOptions.length - 1 : current - 1))
       if (step === "cache") setCacheIndex((current) => (current === 0 ? cacheOptions.length - 1 : current - 1))
     }
     if (key.downArrow || key.rightArrow) {
-      if (step === "endpoint") setEndpointIndex((current) => (current === endpointKinds.length - 1 ? 0 : current + 1))
+      if (step === "endpoint") setEndpointIndex((current) => (current === channelTypeOptions.length - 1 ? 0 : current + 1))
       if (step === "cache") setCacheIndex((current) => (current === cacheOptions.length - 1 ? 0 : current + 1))
     }
     if (key.backspace || key.delete) updateCurrentInput(currentInput().slice(0, -1))
@@ -101,10 +101,10 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       {error ? <Text color="red">{error}</Text> : null}
       {step === "endpoint" ? (
         <Box flexDirection="column">
-          <Text>Select endpoint kind:</Text>
-          {endpointKinds.map((kind, index) => <Text key={kind} color={index === endpointIndex ? "green" : undefined}>{index === endpointIndex ? "›" : " "} {kind}</Text>)}
+          <Text>Select channel type:</Text>
+          {channelTypeOptions.map((option, index) => <Text key={option.kind} color={index === endpointIndex ? "green" : undefined}>{index === endpointIndex ? "›" : " "} {option.label}</Text>)}
+          <Text dimColor>{channelType.description}</Text>
           <Text dimColor>{endpointTemplate.label}</Text>
-          <Text dimColor>NPM: {endpointTemplate.recommendedNpm}</Text>
           {endpointTemplate.baseURLHint ? <Text dimColor>Base URL example: {endpointTemplate.baseURLHint}</Text> : null}
         </Box>
       ) : null}
@@ -119,7 +119,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       {step === "api-key" ? (
         <Box flexDirection="column">
           <Text>API key: {"*".repeat(apiKeyValue.length) || "_"}</Text>
-          {providerID.trim() ? <Text dimColor>Will be stored at: {defaultSecretFilePath(providerID.trim())}</Text> : null}
+          {providerID.trim() ? <Text dimColor>Stored automatically at: {defaultSecretFilePath(providerID.trim())}</Text> : null}
         </Box>
       ) : null}
       {step === "cache" ? (

@@ -1,19 +1,21 @@
 import { addProvider } from "../core/provider-editor.js"
+import { recommendedNpmForChannelType } from "../core/channel-types.js"
+import { defaultSecretFilePath } from "../core/secret-file.js"
 import { createProviderDraftFromEndpoint } from "../core/provider-generator.js"
 import { applyProviderEdit } from "../core/jsonc-editor.js"
 import { loadModelsDev } from "../core/models-dev.js"
 import {
   loadConfigForCommand,
   parseEndpointKind,
-  parseSecretRef,
+  parseManagedApiKeyValue,
   writeMutation,
+  type ManagedSecretCommandOptions,
   type MutatingCommandOptions,
-  type SecretCommandOptions,
 } from "./common.js"
 
 export type AddProviderCommandOptions = MutatingCommandOptions &
-  SecretCommandOptions & {
-    endpointKind: string
+  ManagedSecretCommandOptions & {
+    channelType: string
     name?: string
     baseUrl?: string
     model?: string[]
@@ -30,17 +32,20 @@ export async function addProviderCommand(providerID: string, options: AddProvide
     modelsDevData = {}
   }
 
+  const endpointKind = parseEndpointKind(options.channelType)
+  const apiKeyFilePath = defaultSecretFilePath(providerID)
   const generated = await createProviderDraftFromEndpoint({
-    endpointKind: parseEndpointKind(options.endpointKind),
+    endpointKind,
     providerID,
     name: options.name ?? providerID,
     baseURL: options.baseUrl,
-    apiKey: parseSecretRef(options),
+    apiKey: { type: "file", path: apiKeyFilePath },
     modelIDs,
     modelsDev: { data: modelsDevData },
   })
+  generated.provider.npm = recommendedNpmForChannelType(endpointKind)
   const nextConfig = addProvider(document.data, generated.provider)
   const nextText = applyProviderEdit(document, providerID, (nextConfig.provider as Record<string, unknown>)[providerID])
 
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writeMutation({ document, options, nextConfig, nextText, secretFile: { path: apiKeyFilePath, value: parseManagedApiKeyValue(options) } })
 }

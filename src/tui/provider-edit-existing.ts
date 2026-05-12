@@ -1,11 +1,12 @@
-import { renderSecretRef } from "../core/secret-strategy.js"
-import type { ProviderDraft, SecretRef } from "../core/types.js"
+import { defaultSecretFilePath } from "../core/secret-file.js"
+import { recommendedNpmForChannelType } from "../core/channel-types.js"
+import type { EndpointKind, ProviderDraft } from "../core/types.js"
 
 export type ExistingProviderEditDraft = {
   name?: string
-  npm?: string
+  endpointKind?: EndpointKind
   baseURL?: string
-  apiKey?: SecretRef
+  apiKeyValue?: string
   setCacheKey?: boolean
 }
 
@@ -16,11 +17,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function buildExistingProviderEditPatch(
   current: Record<string, unknown>,
   draft: ExistingProviderEditDraft,
+  providerID: string,
 ): Partial<Omit<ProviderDraft, "id" | "models">> {
   const patch: Partial<Omit<ProviderDraft, "id" | "models">> = {}
 
   if (draft.name !== undefined) patch.name = draft.name
-  if (draft.npm !== undefined) patch.npm = draft.npm
+  if (draft.endpointKind !== undefined) patch.npm = recommendedNpmForChannelType(draft.endpointKind)
 
   const currentOptions = isRecord(current.options) ? current.options : {}
   const options = { ...currentOptions }
@@ -31,8 +33,8 @@ export function buildExistingProviderEditPatch(
     else delete options.baseURL
     hasOptionsPatch = true
   }
-  if (draft.apiKey !== undefined) {
-    options.apiKey = renderSecretRef(draft.apiKey)
+  if (draft.apiKeyValue !== undefined) {
+    options.apiKey = `{file:${defaultSecretFilePath(providerID)}}`
     hasOptionsPatch = true
   }
   if (draft.setCacheKey !== undefined) {
