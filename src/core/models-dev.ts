@@ -1,8 +1,10 @@
-import type { ModelDraft, ModelModality } from "./types.js"
+import type { EndpointKind, ModelDraft, ModelModality } from "./types.js"
 
 export type ModelsDevModel = {
   id: string
   name: string
+  family?: string
+  release_date?: string
   attachment?: boolean
   reasoning?: boolean
   temperature?: boolean
@@ -10,7 +12,9 @@ export type ModelsDevModel = {
   limit?: { context: number; output: number; input?: number }
   modalities?: { input: ModelModality[]; output: ModelModality[] }
   options?: Record<string, unknown>
+  headers?: Record<string, string>
   provider?: { npm?: string; api?: string }
+  variants?: Record<string, Record<string, unknown>>
 }
 
 export type ModelsDevProvider = {
@@ -27,6 +31,15 @@ export type ModelsDevOptions = {
   url?: string
   timeoutMs?: number
   data?: ModelsDevData
+}
+
+export type ModelsDevMatchConfidence = "exact-provider" | "candidate-provider" | "global-unique" | "global-candidate"
+
+export type ModelsDevMatch = {
+  providerID: string
+  modelID: string
+  model: ModelsDevModel
+  confidence: ModelsDevMatchConfidence
 }
 
 let cachedData: ModelsDevData | undefined
@@ -57,10 +70,55 @@ export async function findModelsDevModel(modelRef: string, options: ModelsDevOpt
   return data[providerID]?.models?.[modelID]
 }
 
+function providerCandidates(kind: EndpointKind, providerID: string) {
+  const candidates =
+    kind === "openai-responses"
+      ? [providerID, "openai"]
+      : kind === "openai-compatible"
+        ? [providerID, "openai"]
+        : kind === "anthropic-compatible"
+          ? [providerID, "anthropic"]
+          : [providerID, "google", "gemini"]
+  return Array.from(new Set(candidates.filter(Boolean)))
+}
+
+export async function findModelsDevModelForEndpoint(input: {
+  endpointKind: EndpointKind
+  providerID: string
+  modelID: string
+  options?: ModelsDevOptions
+}): Promise<ModelsDevMatch | undefined> {
+  const data = await loadModelsDev(input.options)
+  const candidates = providerCandidates(input.endpointKind, input.providerID)
+
+  const exact = data[input.providerID]?.models?.[input.modelID]
+  if (exact) return { providerID: input.providerID, modelID: input.modelID, model: exact, confidence: "exact-provider" }
+
+  for (const providerID of candidates) {
+    if (providerID === input.providerID) continue
+    const model = data[providerID]?.models?.[input.modelID]
+    if (model) return { providerID, modelID: input.modelID, model, confidence: "candidate-provider" }
+  }
+
+  const matches: ModelsDevMatch[] = []
+  for (const [providerID, provider] of Object.entries(data)) {
+    const model = provider.models[input.modelID]
+    if (model) matches.push({ providerID, modelID: input.modelID, model, confidence: "global-unique" })
+  }
+  if (matches.length === 1) return matches[0]
+  for (const providerID of candidates) {
+    const match = matches.find((candidate) => candidate.providerID === providerID)
+    if (match) return { ...match, confidence: "global-candidate" }
+  }
+  return undefined
+}
+
 export function modelsDevToModelDraft(model: ModelsDevModel): ModelDraft {
   const draft: ModelDraft = {
     name: model.name,
   }
+  if (model.family !== undefined) draft.family = model.family
+  if (model.release_date !== undefined) draft.release_date = model.release_date
   if (model.attachment !== undefined) draft.attachment = model.attachment
   if (model.reasoning !== undefined) draft.reasoning = model.reasoning
   if (model.temperature !== undefined) draft.temperature = model.temperature
@@ -68,6 +126,8 @@ export function modelsDevToModelDraft(model: ModelsDevModel): ModelDraft {
   if (model.limit) draft.limit = model.limit
   if (model.modalities) draft.modalities = model.modalities
   if (model.options) draft.options = model.options
+  if (model.headers) draft.headers = model.headers
   if (model.provider) draft.provider = model.provider
+  if (model.variants) draft.variants = model.variants
   return draft
 }

@@ -4,6 +4,7 @@ import { createConfigDiff } from "../core/diff.js"
 import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
 import { validateConfig } from "../core/schema-validator.js"
+import { restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
 import { addProvider } from "../core/provider-editor.js"
 import { applyProviderEdit } from "../core/jsonc-editor.js"
@@ -45,20 +46,67 @@ export function App() {
     }
   }
 
-  async function prepareProviderWrite(generated: GeneratedProviderDraft) {
+  async function prepareProviderWriteState(generated: GeneratedProviderDraft): Promise<DiffReviewState> {
+    const target = config.target ?? locateConfig({ scope: config.scope })
+    const document = await readConfig(target)
+    const nextConfig = addProvider(document.data, generated.provider)
+    const providerConfig = (nextConfig.provider as Record<string, unknown>)[generated.provider.id]
+    const nextText = applyProviderEdit(document, generated.provider.id, providerConfig)
+    return {
+      targetPath: target.path,
+      diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+      document,
+      nextConfig,
+      nextText,
+      secretFile: providerDraft ? { path: providerDraft.apiKeyFilePath, value: providerDraft.apiKeyValue } : undefined,
+    }
+  }
+
+  async function commitPreparedWrite(review: DiffReviewState): Promise<DiffReviewState> {
+    if (!review.document || !review.nextConfig || !review.nextText) return { ...review, error: "No pending write is available." }
+    const validation = await validateConfig(review.nextConfig, { relaxModelEnum: true })
+    if (validation.diagnostics.length > 0) {
+      return { ...review, diagnostics: validation.diagnostics, error: validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
+    }
+
+    const secretSnapshot = review.secretFile ? await snapshotSecretFile(review.secretFile.path) : undefined
+    let secretFilePath: string | undefined
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
-      const document = await readConfig(target)
-      const nextConfig = addProvider(document.data, generated.provider)
-      const providerConfig = (nextConfig.provider as Record<string, unknown>)[generated.provider.id]
-      const nextText = applyProviderEdit(document, generated.provider.id, providerConfig)
-      setDiffReview({
-        targetPath: target.path,
-        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
-        document,
-        nextConfig,
-        nextText,
+      if (review.secretFile) {
+        const secretResult = await writeSecretFileSafely(review.secretFile)
+        secretFilePath = secretResult.path
+      }
+      const result = await writeConfigSafely({
+        document: review.document,
+        nextConfig: review.nextConfig,
+        nextText: review.nextText,
+        validate: (nextConfig) => validateConfig(nextConfig, { relaxModelEnum: true }),
       })
+      if (result.diagnostics.length > 0) {
+        if (secretSnapshot) await restoreSecretFile(secretSnapshot)
+        return { ...review, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
+      }
+      return { ...review, result, secretFilePath, completed: true }
+    } catch (caught) {
+      if (secretSnapshot) await restoreSecretFile(secretSnapshot)
+      return { ...review, error: caught instanceof Error ? caught.message : String(caught) }
+    }
+  }
+
+  async function saveProvider(generated: GeneratedProviderDraft) {
+    try {
+      const review = await prepareProviderWriteState(generated)
+      setDiffReview(await commitPreparedWrite(review))
+      setRoute("diff-review")
+    } catch (caught) {
+      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setRoute("diff-review")
+    }
+  }
+
+  async function reviewProviderDiff(generated: GeneratedProviderDraft) {
+    try {
+      setDiffReview(await prepareProviderWriteState(generated))
       setRoute("diff-review")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
@@ -67,25 +115,7 @@ export function App() {
   }
 
   async function confirmWrite() {
-    if (!diffReview.document || !diffReview.nextConfig || !diffReview.nextText) {
-      setDiffReview((current) => ({ ...current, error: "No pending write is available." }))
-      return
-    }
-    try {
-      const result = await writeConfigSafely({
-        document: diffReview.document,
-        nextConfig: diffReview.nextConfig,
-        nextText: diffReview.nextText,
-        validate: (nextConfig) => validateConfig(nextConfig, { relaxModelEnum: true }),
-      })
-      if (result.diagnostics.length > 0) {
-        setDiffReview((current) => ({ ...current, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }))
-        return
-      }
-      setDiffReview((current) => ({ ...current, result, completed: true }))
-    } catch (caught) {
-      setDiffReview((current) => ({ ...current, error: caught instanceof Error ? caught.message : String(caught) }))
-    }
+    setDiffReview(await commitPreparedWrite(diffReview))
   }
 
   return (
@@ -123,7 +153,7 @@ export function App() {
         />
       ) : null}
       {route === "model-edit" && providerDraft ? (
-        <ModelEditScreen draft={providerDraft} onBack={() => setRoute("home")} onReview={prepareProviderWrite} />
+        <ModelEditScreen draft={providerDraft} onBack={() => setRoute("home")} onSave={saveProvider} onReviewDiff={reviewProviderDiff} />
       ) : null}
       {route === "diff-review" ? (
         <DiffReviewScreen

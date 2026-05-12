@@ -19,6 +19,11 @@ export type DiffReviewState = {
   nextConfig?: Record<string, unknown>
   nextText?: string
   result?: WriteConfigSafelyResult
+  secretFile?: {
+    path: string
+    value: string
+  }
+  secretFilePath?: string
   error?: string
   completed?: boolean
 }
@@ -29,5 +34,7 @@ export type ProviderFlowDraft = {
   name: string
   baseURL?: string
   apiKey: SecretRef
+  apiKeyValue: string
+  apiKeyFilePath: string
   setCacheKey: boolean
 }

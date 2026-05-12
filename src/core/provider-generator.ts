@@ -1,6 +1,6 @@
 import type { EndpointKind, ProviderDraft, SecretRef } from "./types.js"
 import { renderSecretRef } from "./secret-strategy.js"
-import { resolveModelTemplate } from "./template-resolver.js"
+import { resolveModelTemplate, type ModelMetadataSource } from "./template-resolver.js"
 import { getEndpointTemplate } from "../templates/index.js"
 import type { ModelsDevOptions } from "./models-dev.js"
 
@@ -18,6 +18,15 @@ export type CreateProviderDraftInput = {
 export type GeneratedProviderDraft = {
   provider: ProviderDraft
   modelConfirmations: Record<string, boolean>
+  modelResolutions: Record<string, GeneratedModelResolution>
+  warnings: string[]
+}
+
+export type GeneratedModelResolution = {
+  modelID: string
+  sources: ModelMetadataSource[]
+  needsConfirmation: boolean
+  warnings: string[]
 }
 
 function shouldSetCacheKey(kind: EndpointKind) {
@@ -28,6 +37,8 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
   const template = getEndpointTemplate(input.endpointKind)
   const models: ProviderDraft["models"] = {}
   const modelConfirmations: Record<string, boolean> = {}
+  const modelResolutions: Record<string, GeneratedModelResolution> = {}
+  const warnings: string[] = []
 
   for (const modelID of input.modelIDs) {
     const resolved = await resolveModelTemplate({
@@ -38,6 +49,13 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
     })
     models[modelID] = resolved.model
     modelConfirmations[modelID] = resolved.needsConfirmation
+    modelResolutions[modelID] = {
+      modelID,
+      sources: resolved.sources,
+      needsConfirmation: resolved.needsConfirmation,
+      warnings: resolved.warnings,
+    }
+    warnings.push(...resolved.warnings)
   }
 
   const options: ProviderDraft["options"] = {
@@ -56,5 +74,7 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
       models,
     },
     modelConfirmations,
+    modelResolutions,
+    warnings,
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { clearModelsDevCache, findModelsDevModel, loadModelsDev, modelsDevToModelDraft } from "../src/core/models-dev.js"
+import { clearModelsDevCache, findModelsDevModel, findModelsDevModelForEndpoint, loadModelsDev, modelsDevToModelDraft } from "../src/core/models-dev.js"
 
 function fakeFetch(data: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(data), { status: 200 })) as typeof fetch
@@ -19,6 +19,21 @@ const data = {
         attachment: true,
         limit: { context: 400000, output: 128000 },
         modalities: { input: ["text", "image"], output: ["text"] },
+        headers: { "OpenAI-Beta": "test" },
+        variants: {
+          low: { reasoningEffort: "low" },
+          high: { reasoningEffort: "high" },
+        },
+      },
+    },
+  },
+  anthropic: {
+    id: "anthropic",
+    name: "Anthropic",
+    models: {
+      "claude-test": {
+        id: "claude-test",
+        name: "Claude Test",
       },
     },
   },
@@ -52,11 +67,37 @@ describe("models.dev", () => {
     expect(await findModelsDevModel("missing/model", { data })).toBeUndefined()
   })
 
+  test("finds endpoint provider candidates for custom providers", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-responses",
+      providerID: "custom-openai",
+      modelID: "gpt-5",
+      options: { data },
+    })
+
+    expect(match?.providerID).toBe("openai")
+    expect(match?.confidence).toBe("candidate-provider")
+  })
+
+  test("falls back to global unique model IDs", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "claude-test",
+      options: { data },
+    })
+
+    expect(match?.providerID).toBe("anthropic")
+    expect(match?.confidence).toBe("global-unique")
+  })
+
   test("converts metadata to schema-safe model draft", () => {
     const model = data.openai.models["gpt-5"]
     const draft = modelsDevToModelDraft(model as any)
     expect(draft.limit?.context).toBe(400000)
     expect(draft.modalities?.input).toContain("image")
+    expect(draft.headers?.["OpenAI-Beta"]).toBe("test")
+    expect(draft.variants?.low?.reasoningEffort).toBe("low")
     expect(Object.keys(draft)).not.toContain("vision")
   })
 })

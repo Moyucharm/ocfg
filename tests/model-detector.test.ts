@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { detectOpenAICompatibleModels } from "../src/core/model-detector.js"
+import { detectModels, detectOpenAICompatibleModels } from "../src/core/model-detector.js"
 
 function responseFetch(body: unknown, status = 200): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status })) as typeof fetch
@@ -22,14 +22,14 @@ describe("model detector", () => {
     expect(result.models).toEqual([
       {
         id: "gpt-test",
-        source: "openai-compatible-models-endpoint",
+        source: "models-endpoint",
         trusted: false,
         capabilitiesResolved: false,
       },
       {
         id: "claude-test",
         name: "Claude Test",
-        source: "openai-compatible-models-endpoint",
+        source: "models-endpoint",
         trusted: false,
         capabilitiesResolved: false,
       },
@@ -45,6 +45,67 @@ describe("model detector", () => {
 
     await detectOpenAICompatibleModels("https://example.com/v1", { fetchImpl, apiKey: "sk-test" })
     expect(authorization).toBe("Bearer sk-test")
+  })
+
+  test("detects OpenAI Responses models from /models", async () => {
+    let requestedURL: string | URL | Request | undefined
+    const fetchImpl = (async (url) => {
+      requestedURL = url
+      return new Response(JSON.stringify({ data: [{ id: "gpt-5" }] }))
+    }) as typeof fetch
+
+    const result = await detectModels("openai-responses", "https://api.openai.com/v1", { fetchImpl })
+
+    expect(requestedURL).toBe("https://api.openai.com/v1/models")
+    expect(result.models.map((model) => model.id)).toEqual(["gpt-5"])
+  })
+
+  test("detects Anthropic models with Anthropic headers", async () => {
+    let headers: Record<string, string> | undefined
+    const fetchImpl = (async (_url, init) => {
+      headers = init?.headers as Record<string, string>
+      return new Response(JSON.stringify({ data: [{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet 4.5" }] }))
+    }) as typeof fetch
+
+    const result = await detectModels("anthropic-compatible", "https://api.anthropic.com/v1", { fetchImpl, apiKey: "sk-ant" })
+
+    expect(headers).toEqual({ "x-api-key": "sk-ant", "anthropic-version": "2023-06-01" })
+    expect(result.models).toEqual([
+      {
+        id: "claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        source: "models-endpoint",
+        trusted: false,
+        capabilitiesResolved: false,
+      },
+    ])
+  })
+
+  test("detects Gemini models and normalizes model names", async () => {
+    let requestedURL: string | URL | Request | undefined
+    let headers: Record<string, string> | undefined
+    const fetchImpl = (async (url, init) => {
+      requestedURL = url
+      headers = init?.headers as Record<string, string>
+      return new Response(JSON.stringify({ models: [{ name: "models/gemini-2.5-pro", displayName: "Gemini 2.5 Pro" }] }))
+    }) as typeof fetch
+
+    const result = await detectModels("gemini-compatible", "https://generativelanguage.googleapis.com/v1beta", {
+      fetchImpl,
+      apiKey: "AIza-test",
+    })
+
+    expect(requestedURL).toBe("https://generativelanguage.googleapis.com/v1beta/models")
+    expect(headers).toEqual({ "x-goog-api-key": "AIza-test" })
+    expect(result.models).toEqual([
+      {
+        id: "gemini-2.5-pro",
+        name: "Gemini 2.5 Pro",
+        source: "models-endpoint",
+        trusted: false,
+        capabilitiesResolved: false,
+      },
+    ])
   })
 
   test("preserves custom headers while adding authorization", async () => {

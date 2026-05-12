@@ -28,11 +28,16 @@ describe("endpoint templates", () => {
     }
   })
 
-  test("marks only openai-compatible as probeable for now", () => {
+  test("marks all endpoints as probeable through baseURL/models", () => {
     expect(getEndpointTemplate("openai-compatible").supportsModelProbe).toBe(true)
-    expect(getEndpointTemplate("openai-responses").supportsModelProbe).toBe(false)
-    expect(getEndpointTemplate("anthropic-compatible").supportsModelProbe).toBe(false)
-    expect(getEndpointTemplate("gemini-compatible").supportsModelProbe).toBe(false)
+    expect(getEndpointTemplate("openai-responses").supportsModelProbe).toBe(true)
+    expect(getEndpointTemplate("anthropic-compatible").supportsModelProbe).toBe(true)
+    expect(getEndpointTemplate("gemini-compatible").supportsModelProbe).toBe(true)
+  })
+
+  test("uses versioned model probe base URLs", () => {
+    expect(getEndpointTemplate("anthropic-compatible").baseURLHint).toBe("https://api.anthropic.com/v1")
+    expect(getEndpointTemplate("gemini-compatible").baseURLHint).toBe("https://generativelanguage.googleapis.com/v1beta")
   })
 
   test("keeps gemini default separate from openai-compatible proxies", () => {

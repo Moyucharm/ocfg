@@ -4,8 +4,8 @@ export const anthropicCompatibleTemplate: EndpointTemplate = {
   kind: "anthropic-compatible",
   label: "Claude-compatible Anthropic Messages",
   recommendedNpm: "@ai-sdk/anthropic",
-  baseURLHint: "https://example.com/v1",
-  supportsModelProbe: false,
+  baseURLHint: "https://api.anthropic.com/v1",
+  supportsModelProbe: true,
   genericModel: {
     name: "Claude-compatible Model",
     limit: { context: 200000, output: 8192 },

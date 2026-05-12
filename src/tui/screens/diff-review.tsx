@@ -5,7 +5,7 @@ import type { DiffReviewState } from "../types.js"
 const actions = ["Confirm", "Cancel"] as const
 
 export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: () => Promise<void> | void; onCancel: () => void }) {
-  const [selected, setSelected] = useState(1)
+  const [selected, setSelected] = useState(0)
   const [writing, setWriting] = useState(false)
 
   useInput((input, key) => {
@@ -32,6 +32,7 @@ export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: ()
         <Text bold color="green">Config written.</Text>
         <Text>Target: {props.review.result?.targetPath ?? props.review.targetPath}</Text>
         {props.review.result?.backupPath ? <Text>Backup: {props.review.result.backupPath}</Text> : null}
+        {props.review.secretFilePath ? <Text>API key file: {props.review.secretFilePath}</Text> : null}
         <Text>Next steps: restart OpenCode if the running session does not pick up provider changes.</Text>
         <Text dimColor>Press Enter, b, or q to return Home.</Text>
       </Box>
@@ -52,6 +53,7 @@ export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: ()
     <Box flexDirection="column">
       <Text bold>Diff Review</Text>
       <Text dimColor>{props.review.targetPath}</Text>
+      {props.review.secretFile ? <Text dimColor>API key will be stored at: {props.review.secretFile.path}</Text> : null}
       {writing ? <Text color="yellow">Writing...</Text> : null}
       {props.review.diagnostics && props.review.diagnostics.length > 0 ? (
         <Box flexDirection="column" marginY={1}>

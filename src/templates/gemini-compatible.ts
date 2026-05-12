@@ -5,7 +5,7 @@ export const geminiCompatibleTemplate: EndpointTemplate = {
   label: "Gemini-compatible / Google Generative AI",
   recommendedNpm: "@ai-sdk/google",
   baseURLHint: "https://generativelanguage.googleapis.com/v1beta",
-  supportsModelProbe: false,
+  supportsModelProbe: true,
   genericModel: {
     name: "Gemini-compatible Model",
     limit: { context: 128000, output: 8192 },

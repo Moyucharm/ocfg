@@ -1,10 +1,11 @@
 import type { EndpointTemplate } from "./types.js"
+import { openAIGPT5Model } from "./openai-gpt.js"
 
 export const openAICompatibleTemplate: EndpointTemplate = {
   kind: "openai-compatible",
   label: "OpenAI-compatible Chat Completions",
   recommendedNpm: "@ai-sdk/openai-compatible",
-  baseURLHint: "https://example.com/v1",
+  baseURLHint: "https://api.openai.com/v1",
   supportsModelProbe: true,
   genericModel: {
     name: "OpenAI-compatible Model",
@@ -17,15 +18,7 @@ export const openAICompatibleTemplate: EndpointTemplate = {
     {
       family: "gpt-5",
       match: /(^|[/_-])gpt-5/i,
-      model: {
-        name: "GPT-5 Compatible",
-        limit: { context: 400000, output: 128000 },
-        modalities: { input: ["text", "image"], output: ["text"] },
-        attachment: true,
-        reasoning: true,
-        tool_call: true,
-        temperature: true,
-      },
+      model: openAIGPT5Model("GPT-5 Compatible"),
     },
     {
       family: "gpt-4.1",

@@ -41,12 +41,14 @@ describe("commands", () => {
     process.exitCode = undefined
     log = vi.spyOn(console, "log").mockImplementation(() => undefined)
     error = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({}), { status: 200 }))
   })
 
   afterEach(() => {
     process.exitCode = exitCode
     log.mockRestore()
     error.mockRestore()
+    vi.unstubAllGlobals()
   })
 
   test("validate reports parse diagnostics as JSON without schema fetch", async () => {
