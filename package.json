@@ -3,6 +3,18 @@
   "version": "0.1.0",
   "description": "Safe CLI/TUI editor for OpenCode model provider configuration.",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "keywords": [
+    "opencode",
+    "provider",
+    "cli",
+    "tui",
+    "jsonc"
+  ],
   "bin": {
     "opencode-provider-editor": "dist/cli.js"
   },
