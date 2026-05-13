@@ -20,8 +20,10 @@ import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
 import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
+import { DefaultModelScreen } from "./screens/default-model.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
+import { applyDefaultModelSelection, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
@@ -80,6 +82,7 @@ export function App() {
       setProviderListMode("delete")
       navigate("provider-list")
     }
+    if (action === "set-default-model") navigate("default-model")
   }
 
   function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute) {
@@ -350,6 +353,26 @@ export function App() {
     }
   }
 
+  async function reviewDefaultModelSelection(key: DefaultModelKey, ref?: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const options = collectDefaultModelOptions(document.data)
+      if (ref !== undefined && !isSelectableDefaultModelRef(options, ref)) throw new Error(`Model ref "${ref}" does not exist in this config`)
+      const nextConfig = applyDefaultModelSelection(document.data, key, ref)
+      const nextText = applyConfigEdit(document, [key], ref)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "default-model")
+    } catch (caught) {
+      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "default-model")
+    }
+  }
+
   async function confirmWrite() {
     setDiffReview(await commitPreparedWrite(diffReview))
   }
@@ -440,6 +463,13 @@ export function App() {
           target={deleteTarget}
           onCancel={() => goBack()}
           onConfirm={(token) => void confirmDelete(token)}
+        />
+      ) : null}
+      {route === "default-model" ? (
+        <DefaultModelScreen
+          selection={config}
+          onBack={() => goBack()}
+          onSelect={(key, ref) => void reviewDefaultModelSelection(key, ref)}
         />
       ) : null}
       {route === "diff-review" ? (

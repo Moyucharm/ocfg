@@ -13,6 +13,7 @@ const items: MenuItem[] = [
   { label: "Add Provider", description: "Start provider creation flow", action: "add-provider" },
   { label: "Edit Provider", description: "Edit an existing provider", action: "edit-provider" },
   { label: "Delete Provider", description: "Delete provider or model safely", action: "delete-provider" },
+  { label: "Set Default Model", description: "Set or clear model and small_model", action: "set-default-model" },
   { label: "Switch Config Target", description: "Choose global or project config", action: "switch-config" },
 ]
 

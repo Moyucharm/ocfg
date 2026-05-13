@@ -13,6 +13,7 @@ export type TuiRoute =
   | "model-add"
   | "model-edit-existing"
   | "delete-confirm"
+  | "default-model"
   | "model-edit"
   | "diff-review"
 
@@ -33,7 +34,7 @@ export type DeleteTargetState =
       error?: string
     }
 
-export type TuiAction = "doctor" | "add-provider" | "edit-provider" | "delete-provider" | "switch-config"
+export type TuiAction = "doctor" | "add-provider" | "edit-provider" | "delete-provider" | "set-default-model" | "switch-config"
 
 export type TuiConfigSelection = {
   scope: ConfigScope
