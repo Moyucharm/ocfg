@@ -1,4 +1,6 @@
+import { applyConfigEdit } from "../core/jsonc-editor.js"
 import { setDefaultModel, setSmallModel } from "../core/provider-editor.js"
+import type { ConfigDocument } from "../core/types.js"
 
 export type DefaultModelKey = "model" | "small_model"
 
@@ -59,6 +61,14 @@ export function applyDefaultModelSelection(config: Record<string, unknown>, key:
   const next = structuredClone(config)
   delete next[key]
   return next
+}
+
+export function applyDefaultModelText(document: ConfigDocument, nextConfig: Record<string, unknown>, key: DefaultModelKey, ref?: string): string {
+  let nextText = document.text || "{}\n"
+  if (nextConfig.$schema !== undefined && (!document.target.exists || document.data.$schema !== nextConfig.$schema)) {
+    nextText = applyConfigEdit({ ...document, text: nextText }, ["$schema"], nextConfig.$schema)
+  }
+  return applyConfigEdit({ ...document, text: nextText }, [key], ref)
 }
 
 export function isSelectableDefaultModelRef(options: DefaultModelOption[], ref: string) {

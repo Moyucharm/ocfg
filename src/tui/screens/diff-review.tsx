@@ -4,14 +4,14 @@ import type { DiffReviewState } from "../types.js"
 
 const actions = ["Confirm", "Cancel"] as const
 
-export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: () => Promise<void> | void; onCancel: () => void }) {
+export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: () => Promise<void> | void; onCancel: () => void; onClose: () => void }) {
   const [selected, setSelected] = useState(0)
   const [writing, setWriting] = useState(false)
 
   useInput((input, key) => {
     if (writing) return
     if (props.review.completed || props.review.error) {
-      if (input === "q" || input === "b" || key.return) props.onCancel()
+      if (input === "q" || input === "b" || key.return) props.onClose()
       return
     }
     if (input === "q") props.onCancel()

@@ -1,5 +1,16 @@
 import { describe, expect, test } from "vitest"
-import { applyDefaultModelSelection, collectDefaultModelOptions, isSelectableDefaultModelRef } from "../src/tui/default-model.js"
+import { parse } from "jsonc-parser"
+import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef } from "../src/tui/default-model.js"
+import type { ConfigDocument } from "../src/core/types.js"
+
+function doc(text: string): ConfigDocument {
+  return {
+    target: { scope: "project", path: "/tmp/opencode.jsonc", exists: true, format: "jsonc" },
+    text,
+    data: parse(text) as Record<string, unknown>,
+    diagnostics: [],
+  }
+}
 
 describe("default model TUI helpers", () => {
   test("collects an empty option before existing model refs", () => {
@@ -43,6 +54,23 @@ describe("default model TUI helpers", () => {
     expect(withModel.model).toBe("custom/chat")
     expect(withModel.$schema).toBe("https://opencode.ai/config.json")
     expect(withSmallModel.small_model).toBe("custom/chat")
+  })
+
+  test("writes schema added by default model selection", () => {
+    const document = doc(`{
+  // keep
+  "provider": {
+    "custom": { "models": { "chat": {} } }
+  }
+}
+`)
+    const nextConfig = applyDefaultModelSelection(document.data, "model", "custom/chat")
+    const nextText = applyDefaultModelText(document, nextConfig, "model", "custom/chat")
+    const parsed = parse(nextText)
+
+    expect(nextText).toContain("// keep")
+    expect(parsed.$schema).toBe("https://opencode.ai/config.json")
+    expect(parsed.model).toBe("custom/chat")
   })
 
   test("empty selection clears the chosen default field", () => {

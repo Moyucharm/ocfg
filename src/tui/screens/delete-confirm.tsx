@@ -22,14 +22,18 @@ export function DeleteConfirmScreen(props: {
   const expectedToken = props.target.kind === "provider" ? `delete:${props.target.providerID}` : `delete:${props.target.providerID}/${props.target.modelID}`
 
   useInput((input, key) => {
-    if (input === "q" || input === "b") {
-      props.onCancel()
-      return
-    }
     if (requiresToken) {
+      if (input === "q" && key.ctrl) {
+        props.onCancel()
+        return
+      }
       if (key.backspace || key.delete) setToken((current) => current.slice(0, -1))
       else if (key.return) props.onConfirm(token.trim())
       else setToken((current) => appendInput(current, input))
+      return
+    }
+    if (input === "q" || input === "b") {
+      props.onCancel()
       return
     }
     if (key.leftArrow || key.upArrow) setSelected((current) => (current === 0 ? actions.length - 1 : current - 1))
@@ -65,7 +69,7 @@ export function DeleteConfirmScreen(props: {
         </Box>
       )}
       {props.target.error ? <Text color="red">{props.target.error}</Text> : null}
-      <Text dimColor>{requiresToken ? "Enter continues, b/q cancels." : "Enter selects, b/q cancels."}</Text>
+      <Text dimColor>{requiresToken ? "Enter continues. Ctrl+Q or Esc cancels." : "Enter selects, b/q cancels."}</Text>
     </Box>
   )
 }

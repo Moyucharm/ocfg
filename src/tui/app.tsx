@@ -23,7 +23,7 @@ import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
-import { applyDefaultModelSelection, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
+import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
@@ -89,6 +89,11 @@ export function App() {
     setDiffReturnRoute(returnRoute)
     setDiffReview(review)
     navigate("diff-review")
+  }
+
+  function closeCompletedDiffReview() {
+    routeHistory.current = []
+    setRoute("home")
   }
 
   async function openExistingProviderEdit(providerID: string) {
@@ -360,7 +365,7 @@ export function App() {
       const options = collectDefaultModelOptions(document.data)
       if (ref !== undefined && !isSelectableDefaultModelRef(options, ref)) throw new Error(`Model ref "${ref}" does not exist in this config`)
       const nextConfig = applyDefaultModelSelection(document.data, key, ref)
-      const nextText = applyConfigEdit(document, [key], ref)
+      const nextText = applyDefaultModelText(document, nextConfig, key, ref)
       openDiffReview({
         targetPath: target.path,
         diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
@@ -476,6 +481,7 @@ export function App() {
         <DiffReviewScreen
           review={diffReview}
           onCancel={() => goBack(diffReturnRoute)}
+          onClose={closeCompletedDiffReview}
           onConfirm={confirmWrite}
         />
       ) : null}
