@@ -1,0 +1,256 @@
+# OpenCode Provider Editor
+
+Safe CLI/TUI tooling for inspecting and editing OpenCode model provider configuration.
+
+This project is a standalone configuration editor for OpenCode config files. The previously planned OpenCode plugin wrapper is deprecated for v1 and is not advertised as a supported workflow.
+
+## Features
+
+- Inspect config health with `doctor`.
+- Validate config against the OpenCode schema with `validate`.
+- Add providers from protocol-oriented endpoint templates.
+- Edit provider name, channel type, base URL, API key file reference, and `setCacheKey`.
+- Edit model display names, limits, and common capability flags.
+- Add or delete models under existing providers.
+- Delete providers with reference checks for top-level defaults.
+- Set or clear top-level `model` and `small_model` from the TUI.
+- Preserve JSONC comments outside edited paths where practical.
+- Write through validation, backup creation, and atomic rename.
+
+## Installation
+
+Install the package when published:
+
+```bash
+npm install -g opencode-provider-editor
+```
+
+Run from a source checkout:
+
+```bash
+npm install
+npm run build
+node dist/cli.js --help
+```
+
+The package binary is named `opencode-provider-editor`.
+
+## Quick Start
+
+Open the interactive terminal UI:
+
+```bash
+opencode-provider-editor tui
+```
+
+Inspect the current global OpenCode config:
+
+```bash
+opencode-provider-editor doctor
+```
+
+Validate the current global OpenCode config:
+
+```bash
+opencode-provider-editor validate
+```
+
+Add a provider with a managed secret file:
+
+```bash
+opencode-provider-editor add provider custom \
+  --channel-type openai-compatible \
+  --base-url https://example.com/v1 \
+  --api-key sk-example \
+  --model example-model
+```
+
+Preview a write without changing files:
+
+```bash
+opencode-provider-editor add provider custom \
+  --channel-type openai-compatible \
+  --base-url https://example.com/v1 \
+  --api-key sk-example \
+  --model example-model \
+  --dry-run
+```
+
+## Config Targets
+
+By default, commands target the global OpenCode config:
+
+```text
+~/.config/opencode/opencode.jsonc
+```
+
+Use project scope to target a project-level config:
+
+```bash
+opencode-provider-editor doctor --config-scope project
+```
+
+Use an explicit config file path when needed:
+
+```bash
+opencode-provider-editor validate --config-path ./opencode.jsonc
+```
+
+New config files are created only during confirmed or non-dry-run writes. Reads and dry runs do not create config files.
+
+## Endpoint Kinds
+
+Provider creation uses protocol-oriented endpoint kinds:
+
+- `openai-compatible`
+- `openai-responses`
+- `anthropic-compatible`
+- `gemini-compatible`
+
+Templates provide recommended provider packages, endpoint behavior, probing support, and model capability defaults. Commercial proxy names are intentionally not treated as templates.
+
+## CLI Commands
+
+Doctor:
+
+```bash
+opencode-provider-editor doctor [--config-scope global|project] [--config-path path] [--json]
+```
+
+Validate:
+
+```bash
+opencode-provider-editor validate [--config-scope global|project] [--config-path path] [--json]
+```
+
+Add a provider:
+
+```bash
+opencode-provider-editor add provider <provider-id> \
+  --channel-type <kind> \
+  --api-key <value> \
+  --model <id> \
+  [--name <name>] \
+  [--base-url <url>] \
+  [--dry-run]
+```
+
+Edit a provider:
+
+```bash
+opencode-provider-editor edit provider <provider-id> \
+  [--name <name>] \
+  [--channel-type <kind>] \
+  [--base-url <url>] \
+  [--api-key <value>] \
+  [--set-cache-key] \
+  [--dry-run]
+```
+
+Edit a model:
+
+```bash
+opencode-provider-editor edit model <provider-id/model-id> \
+  [--name <name>] \
+  [--context <tokens>] \
+  [--output <tokens>] \
+  [--reasoning] \
+  [--tool-call] \
+  [--temperature] \
+  [--dry-run]
+```
+
+Delete a provider:
+
+```bash
+opencode-provider-editor delete provider <provider-id> [--confirm-token <token>] [--dry-run]
+```
+
+Delete a model:
+
+```bash
+opencode-provider-editor delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
+```
+
+Open the TUI:
+
+```bash
+opencode-provider-editor tui
+```
+
+Referenced deletes require an exact confirmation token. For example, deleting provider `custom` while it is referenced by `model` or `small_model` requires `--confirm-token delete:custom`.
+
+## TUI Flows
+
+The TUI is opened with `opencode-provider-editor tui`.
+
+- `Doctor` shows actionable config diagnostics.
+- `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
+- `Edit Provider` selects an existing provider, edits provider fields, and can enter model management.
+- `Delete Provider` selects an existing provider and requires extra confirmation for referenced providers.
+- `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
+- `Switch Config Target` changes between global and project config targets before writing.
+
+Every mutating TUI flow shows a diff before writing and requires explicit confirmation.
+
+## Secret Handling
+
+The default API key path writes secret values to managed files, not plaintext inside the OpenCode provider block.
+
+Managed secret files use this default location pattern:
+
+```text
+~/.config/opencode-provider-editor/secrets/<provider-id>.api-key
+```
+
+The OpenCode config stores a file reference like this:
+
+```jsonc
+"apiKey": "{file:~/.config/opencode-provider-editor/secrets/custom.api-key}"
+```
+
+The tool creates the managed secrets directory with `0700` permissions and secret files with `0600` permissions where supported by the operating system.
+
+CLI `--api-key` values may still be recorded by shell history or process inspection on some systems. Use a trusted shell environment and rotate any secret that may have been exposed.
+
+## Write Safety
+
+Mutating writes validate the full next config before writing.
+
+TUI writes show a diff and require explicit confirmation before writing.
+
+CLI writes support `--dry-run` to print the planned diff and validate without creating, modifying, or deleting files.
+
+Real writes create a timestamped backup next to the target file when the target already exists.
+
+Real writes go through a temporary file and atomic rename.
+
+If validation fails, the config file is not written. If a managed secret file was updated as part of a failed write, the tool attempts to restore its previous state.
+
+## Limitations
+
+This tool edits OpenCode config files; it does not modify OpenCode core.
+
+The OpenCode plugin wrapper is deprecated for v1.
+
+Runtime provider hot reload is not promised. Restart OpenCode if the running session does not pick up provider changes.
+
+The tool does not replace OpenCode's built-in model picker.
+
+The tool does not support the OpenCode Web UI in v1.
+
+## Development
+
+Run checks:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+Run built CLI help:
+
+```bash
+node dist/cli.js --help
+```
