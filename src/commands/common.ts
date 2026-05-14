@@ -85,15 +85,19 @@ export async function writeMutation(input: {
     value: string
   }
 }) {
-  const secretSnapshot = input.secretFile ? await snapshotSecretFile(input.secretFile.path) : undefined
+  const validation = await validateForWrite(input.nextConfig, input.options.validate)
+  let secretSnapshot: Awaited<ReturnType<typeof snapshotSecretFile>> | undefined
   try {
-    if (input.secretFile && !input.options.dryRun) await writeSecretFileSafely(input.secretFile)
+    if (input.secretFile && !input.options.dryRun && validation.valid) {
+      secretSnapshot = await snapshotSecretFile(input.secretFile.path)
+      await writeSecretFileSafely(input.secretFile)
+    }
     const result = await writeConfigSafely({
       document: input.document,
       nextConfig: input.nextConfig,
       nextText: input.nextText,
       dryRun: input.options.dryRun,
-      validate: (config) => validateForWrite(config, input.options.validate),
+      validate: () => validation,
     })
     if (result.diagnostics.length > 0 && secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
     printWriteResult(result, input.options.json)

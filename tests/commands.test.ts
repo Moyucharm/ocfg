@@ -222,6 +222,7 @@ describe("commands", () => {
 
   test("validation failure prevents mutating command writes", async () => {
     const filePath = await tempFile()
+    const secretPath = expandHomePath(defaultSecretFilePath("custom"))
 
     await addProviderCommand("custom", {
       configPath: filePath,
@@ -233,5 +234,7 @@ describe("commands", () => {
 
     expect(process.exitCode).toBe(1)
     await expect(stat(filePath)).rejects.toThrow()
+    await expect(stat(secretPath)).rejects.toThrow()
+    await expect(stat(path.dirname(secretPath))).rejects.toThrow()
   })
 })
