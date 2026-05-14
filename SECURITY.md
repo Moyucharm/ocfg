@@ -1,6 +1,6 @@
 # Security
 
-OpenCode Provider Editor is designed to reduce the risk of breaking OpenCode config files or accidentally storing API keys in plaintext provider blocks.
+OCfg is designed to reduce the risk of breaking OpenCode config files or accidentally storing API keys in plaintext provider blocks.
 
 ## Supported Security Model
 
@@ -23,13 +23,13 @@ The default strategy stores API key content in a managed secret file and writes 
 Default managed secret path pattern:
 
 ```text
-~/.config/opencode-provider-editor/secrets/<provider-id>.api-key
+~/.config/ocfg/secrets/<provider-id>.api-key
 ```
 
 Default config reference pattern:
 
 ```jsonc
-"apiKey": "{file:~/.config/opencode-provider-editor/secrets/custom.api-key}"
+"apiKey": "{file:~/.config/ocfg/secrets/custom.api-key}"
 ```
 
 The managed secrets directory is created with `0700` permissions.

@@ -24,7 +24,7 @@ describe("existing provider TUI edit helper", () => {
 
   test("renders the managed file secret reference", () => {
     expect(buildExistingProviderEditPatch({ options: {} }, { apiKeyValue: "sk-test" }, "My OpenAI.Provider").options?.apiKey).toBe(
-      "{file:~/.config/opencode-provider-editor/secrets/my-openai.provider.api-key}",
+      "{file:~/.config/ocfg/secrets/my-openai.provider.api-key}",
     )
   })
 

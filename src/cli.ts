@@ -46,8 +46,8 @@ function collect(value: string, previous: string[]) {
 }
 
 program
-  .name("opencode-provider-editor")
-  .description("Safely inspect and edit OpenCode model provider configuration.")
+  .name("ocfg")
+  .description("OpenCode provider configuration editor.")
   .version("0.1.0")
 
 addConfigOptions(program.command("doctor").description("Inspect OpenCode config for common provider risks."))

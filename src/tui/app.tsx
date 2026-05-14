@@ -386,7 +386,7 @@ export function App() {
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
         <Text bold color="cyan">
-          OpenCode Provider Editor
+          OCfg - OpenCode Provider Configuration Editor
         </Text>
         <Text dimColor>Target: {config.target ? `${config.target.scope} ${config.target.path}` : config.scope}</Text>
         <Text dimColor>Press Esc to go back, q to quit from Home.</Text>

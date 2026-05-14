@@ -13,7 +13,7 @@ This plan is written for an AI coding agent. Execute waves in order. Tasks withi
     <file>src/cli.ts</file>
   </files>
   <instructions>
-    Create a TypeScript npm package with a bin named `opencode-provider-editor`.
+    Create a TypeScript npm package with a bin named `ocfg`.
     Add scripts for `build`, `test`, `typecheck`, and `dev`.
     Use ESM unless a dependency forces otherwise.
     Add dependencies: `commander`, `ink`, `react`, `jsonc-parser`, `ajv`, `zod`.
@@ -337,7 +337,7 @@ Status: deprecated. The standalone CLI/TUI already edits OpenCode config directl
     Export an OpenCode plugin function.
     Keep behavior minimal and safe.
     Log installation status if `client.app.log` is available.
-    If TUI toast hooks are available in the current OpenCode runtime, show a hint to run `opencode-provider-editor`.
+    If TUI toast hooks are available in the current OpenCode runtime, show a hint to run `ocfg`.
     Do not mutate config from the plugin in v1.
   </instructions>
   <verification>

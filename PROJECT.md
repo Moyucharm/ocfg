@@ -1,8 +1,8 @@
-# OpenCode Provider Editor Project Spec
+# OCfg Project Spec
 
 ## App Concept
 
-OpenCode Provider Editor is a TypeScript CLI/TUI tool, distributed through the OpenCode plugin ecosystem, that safely configures global and project-level OpenCode model providers with schema validation, templates, backups, and diagnostics.
+OCfg is a TypeScript CLI/TUI tool that configures global and project-level OpenCode model providers with schema validation, templates, backups, and diagnostics.
 
 ## Core Decision
 
@@ -234,13 +234,13 @@ src/
 ## CLI Commands
 
 ```text
-opencode-provider-editor
-opencode-provider-editor doctor
-opencode-provider-editor add
-opencode-provider-editor edit
-opencode-provider-editor delete
-opencode-provider-editor validate
-opencode-provider-editor templates
+ocfg
+ocfg doctor
+ocfg add
+ocfg edit
+ocfg delete
+ocfg validate
+ocfg templates
 ```
 
 All mutating commands must support:
@@ -322,7 +322,7 @@ The plugin wrapper is optional and intentionally small.
 Responsibilities:
 
 - Log that the helper is installed.
-- Show a TUI toast or log hint to run `opencode-provider-editor` when possible.
+- Show a TUI toast or log hint to run `ocfg` when possible.
 - Optionally run lightweight diagnostics at startup in later versions.
 
 Non-responsibilities:

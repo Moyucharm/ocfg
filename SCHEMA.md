@@ -1,6 +1,6 @@
 # OpenCode Provider Configuration Schema Notes
 
-This file documents the exact OpenCode config structures that OpenCode Provider Editor must generate.
+This file documents the exact OpenCode config structures that OCfg must generate.
 
 ## Config Targets
 

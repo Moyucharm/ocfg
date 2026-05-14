@@ -15,7 +15,7 @@ function mode(value: number) {
 describe("secret file", () => {
   test("generates stable safe paths from provider IDs", () => {
     expect(defaultSecretFilePath("My OpenAI.Provider", "/home/test")).toBe(
-      "/home/test/.config/opencode-provider-editor/secrets/my-openai.provider.api-key",
+      "/home/test/.config/ocfg/secrets/my-openai.provider.api-key",
     )
   })
 

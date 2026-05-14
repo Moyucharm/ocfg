@@ -1,6 +1,6 @@
-# OpenCode Provider Editor
+# OCfg
 
-Safe CLI/TUI tooling for inspecting and editing OpenCode model provider configuration.
+OpenCode provider configuration editor.
 
 This project is a standalone configuration editor for OpenCode config files. The previously planned OpenCode plugin wrapper is deprecated for v1 and is not advertised as a supported workflow.
 
@@ -22,7 +22,7 @@ This project is a standalone configuration editor for OpenCode config files. The
 Install the package when published:
 
 ```bash
-npm install -g opencode-provider-editor
+npm install -g ocfg
 ```
 
 Run from a source checkout:
@@ -33,32 +33,32 @@ npm run build
 node dist/cli.js --help
 ```
 
-The package binary is named `opencode-provider-editor`.
+The package binary is named `ocfg`.
 
 ## Quick Start
 
 Open the interactive terminal UI:
 
 ```bash
-opencode-provider-editor tui
+ocfg tui
 ```
 
 Inspect the current global OpenCode config:
 
 ```bash
-opencode-provider-editor doctor
+ocfg doctor
 ```
 
 Validate the current global OpenCode config:
 
 ```bash
-opencode-provider-editor validate
+ocfg validate
 ```
 
 Add a provider with a managed secret file:
 
 ```bash
-opencode-provider-editor add provider custom \
+ocfg add provider custom \
   --channel-type openai-compatible \
   --base-url https://example.com/v1 \
   --api-key sk-example \
@@ -68,7 +68,7 @@ opencode-provider-editor add provider custom \
 Preview a write without changing files:
 
 ```bash
-opencode-provider-editor add provider custom \
+ocfg add provider custom \
   --channel-type openai-compatible \
   --base-url https://example.com/v1 \
   --api-key sk-example \
@@ -87,13 +87,13 @@ By default, commands target the global OpenCode config:
 Use project scope to target a project-level config:
 
 ```bash
-opencode-provider-editor doctor --config-scope project
+ocfg doctor --config-scope project
 ```
 
 Use an explicit config file path when needed:
 
 ```bash
-opencode-provider-editor validate --config-path ./opencode.jsonc
+ocfg validate --config-path ./opencode.jsonc
 ```
 
 New config files are created only during confirmed or non-dry-run writes. Reads and dry runs do not create config files.
@@ -114,19 +114,19 @@ Templates provide recommended provider packages, endpoint behavior, probing supp
 Doctor:
 
 ```bash
-opencode-provider-editor doctor [--config-scope global|project] [--config-path path] [--json]
+ocfg doctor [--config-scope global|project] [--config-path path] [--json]
 ```
 
 Validate:
 
 ```bash
-opencode-provider-editor validate [--config-scope global|project] [--config-path path] [--json]
+ocfg validate [--config-scope global|project] [--config-path path] [--json]
 ```
 
 Add a provider:
 
 ```bash
-opencode-provider-editor add provider <provider-id> \
+ocfg add provider <provider-id> \
   --channel-type <kind> \
   --api-key <value> \
   --model <id> \
@@ -138,7 +138,7 @@ opencode-provider-editor add provider <provider-id> \
 Edit a provider:
 
 ```bash
-opencode-provider-editor edit provider <provider-id> \
+ocfg edit provider <provider-id> \
   [--name <name>] \
   [--channel-type <kind>] \
   [--base-url <url>] \
@@ -150,7 +150,7 @@ opencode-provider-editor edit provider <provider-id> \
 Edit a model:
 
 ```bash
-opencode-provider-editor edit model <provider-id/model-id> \
+ocfg edit model <provider-id/model-id> \
   [--name <name>] \
   [--context <tokens>] \
   [--output <tokens>] \
@@ -163,26 +163,26 @@ opencode-provider-editor edit model <provider-id/model-id> \
 Delete a provider:
 
 ```bash
-opencode-provider-editor delete provider <provider-id> [--confirm-token <token>] [--dry-run]
+ocfg delete provider <provider-id> [--confirm-token <token>] [--dry-run]
 ```
 
 Delete a model:
 
 ```bash
-opencode-provider-editor delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
+ocfg delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
 ```
 
 Open the TUI:
 
 ```bash
-opencode-provider-editor tui
+ocfg tui
 ```
 
 Referenced deletes require an exact confirmation token. For example, deleting provider `custom` while it is referenced by `model` or `small_model` requires `--confirm-token delete:custom`.
 
 ## TUI Flows
 
-The TUI is opened with `opencode-provider-editor tui`.
+The TUI is opened with `ocfg tui`.
 
 - `Doctor` shows actionable config diagnostics.
 - `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
@@ -200,13 +200,13 @@ The default API key path writes secret values to managed files, not plaintext in
 Managed secret files use this default location pattern:
 
 ```text
-~/.config/opencode-provider-editor/secrets/<provider-id>.api-key
+~/.config/ocfg/secrets/<provider-id>.api-key
 ```
 
 The OpenCode config stores a file reference like this:
 
 ```jsonc
-"apiKey": "{file:~/.config/opencode-provider-editor/secrets/custom.api-key}"
+"apiKey": "{file:~/.config/ocfg/secrets/custom.api-key}"
 ```
 
 The tool creates the managed secrets directory with `0700` permissions and secret files with `0600` permissions where supported by the operating system.

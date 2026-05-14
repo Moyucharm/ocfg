@@ -22,7 +22,7 @@ Deliverables:
 
 - npm package scaffold.
 - TypeScript build and test setup.
-- CLI entrypoint `opencode-provider-editor`.
+- CLI entrypoint `ocfg`.
 - Config target discovery for global, project, and explicit path.
 - JSONC parsing.
 - OpenCode schema validation.
@@ -30,8 +30,8 @@ Deliverables:
 
 Exit criteria:
 
-- `opencode-provider-editor --help` works.
-- `opencode-provider-editor doctor` can inspect an existing config.
+- `ocfg --help` works.
+- `ocfg doctor` can inspect an existing config.
 - Invalid config reports schema paths and human-readable messages.
 
 ## Phase 2: Safe Editing Core

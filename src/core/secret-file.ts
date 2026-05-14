@@ -24,7 +24,7 @@ export function expandHomePath(filePath: string, home = os.homedir()) {
 export function defaultSecretFilePath(providerID: string, home = "~") {
   const fileName = safeProviderFileName(providerID)
   if (!fileName) throw new Error("Provider ID is required to create a secret file path")
-  return path.join(home, ".config", "opencode-provider-editor", "secrets", `${fileName}.api-key`)
+  return path.join(home, ".config", "ocfg", "secrets", `${fileName}.api-key`)
 }
 
 export async function writeSecretFileSafely(options: { path: string; value: string }): Promise<{ path: string }> {
