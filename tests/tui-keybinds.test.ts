@@ -5,12 +5,11 @@ describe("TUI keybind helpers", () => {
   test("normalizes common Ink key events", () => {
     expect(inputBindings("", { upArrow: true })).toContain("up")
     expect(inputBindings(" ", {})).toContain("space")
-    expect(inputBindings("p", { ctrl: true })).toEqual(expect.arrayContaining(["p", "ctrl+p"]))
+    expect(inputBindings("x", { ctrl: true })).toEqual(expect.arrayContaining(["x", "ctrl+x"]))
     expect(inputBindings("", { return: true })).toEqual(expect.arrayContaining(["return", "enter"]))
   })
 
-  test("matches default command palette and navigation bindings", () => {
-    expect(matchesKeybind("commandPalette", "p", { ctrl: true })).toBe(true)
+  test("matches default navigation bindings", () => {
     expect(matchesKeybind("up", "", { upArrow: true })).toBe(true)
     expect(matchesKeybind("confirm", "", { return: true })).toBe(true)
     expect(matchesKeybind("cancel", "q", { ctrl: true })).toBe(true)
@@ -18,13 +17,13 @@ describe("TUI keybind helpers", () => {
 
   test("applies validated user overrides without losing defaults", () => {
     const keybinds = resolveTuiKeybinds({
-      commandPalette: "ctrl+k",
+      quit: "ctrl+k",
       toggleAll: ["shift+a", "ctrl+a"],
       save: [],
       unknown: "ignored",
     })
 
-    expect(keybinds.commandPalette).toEqual(["ctrl+k"])
+    expect(keybinds.quit).toEqual(["ctrl+k"])
     expect(keybinds.toggleAll).toEqual(["shift+a", "ctrl+a"])
     expect(keybinds.save).toEqual(defaultTuiKeybinds.save)
     expect(keybinds.confirm).toEqual(defaultTuiKeybinds.confirm)

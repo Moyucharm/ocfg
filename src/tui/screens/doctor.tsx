@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react"
-import { Text } from "ink"
+import { Box, Text } from "ink"
 import { readConfig } from "../../core/config-reader.js"
 import { locateConfig } from "../../core/config-locator.js"
 import { runDoctor } from "../../core/doctor.js"
 import type { Diagnostic, Severity } from "../../core/types.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useTuiTheme } from "../theme.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { formatOpenCodeTitle } from "../ui.js"
 
 const severities: Severity[] = ["high", "medium", "low"]
 
@@ -15,11 +16,16 @@ function groupDiagnostics(diagnostics: Diagnostic[]) {
   return Object.fromEntries(severities.map((severity) => [severity, diagnostics.filter((diagnostic) => diagnostic.severity === severity)])) as Record<Severity, Diagnostic[]>
 }
 
+function severityLabel(severity: Severity) {
+  return severity.toUpperCase()
+}
+
 export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () => void }) {
   const [loading, setLoading] = useState(true)
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([])
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
+  const theme = useTuiTheme()
 
   useTuiInput((input, key) => {
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onBack()
@@ -48,22 +54,44 @@ export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () 
     }
   }, [props.selection])
 
-  if (loading) return <Text>Inspecting config...</Text>
-  if (error) return <Text color="red">Doctor failed: {error}</Text>
+  if (loading) return <Text>{formatOpenCodeTitle("Doctor")} Inspecting config...</Text>
+  if (error) return <Text color="red">{formatOpenCodeTitle("Doctor")} failed: {error}</Text>
 
   const grouped = groupDiagnostics(diagnostics)
-  const groups: OpenCodeMenuGroup[] = diagnostics.length === 0
-    ? [{ title: "Diagnostics", items: [{ id: "clean", label: "No diagnostics found", shortcut: "ok", disabled: true }] }]
-    : severities.map((severity) => ({
-      title: severity.toUpperCase(),
-      items: grouped[severity].map((diagnostic, index) => ({
-        id: `${severity}-${index}`,
-        label: diagnostic.path ? `${diagnostic.path} ${diagnostic.message}` : diagnostic.message,
-        shortcut: severity,
-        disabled: true,
-        danger: severity === "high",
-      })),
-    }))
 
-  return <OpenCodeMenu title="Doctor" query="" rows={openCodeMenuRows(groups, "")} selectedIndex={0} footer={["Back\tesc"]} />
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" paddingX={5}>
+        <Text bold>{formatOpenCodeTitle("Doctor")}</Text>
+        <Text color={theme.colors.shortcut}>esc</Text>
+      </Box>
+      <Text> </Text>
+      {diagnostics.length === 0 ? (
+        <Box paddingX={5}>
+          <Text color={theme.colors.success}>No diagnostics found.</Text>
+        </Box>
+      ) : null}
+      {severities.map((severity) => {
+        const items = grouped[severity]
+        if (items.length === 0) return null
+        return (
+          <Box key={severity} flexDirection="column" marginTop={severity === "high" ? 0 : 1}>
+            <Box paddingX={5}>
+              <Text bold color={theme.colors.section}>{severityLabel(severity)}</Text>
+            </Box>
+            {items.map((diagnostic, index) => (
+              <Box key={`${severity}-${index}`} flexDirection="column" paddingX={5}>
+                {diagnostic.path ? <Text color={theme.colors.muted} wrap="wrap">{diagnostic.path}</Text> : null}
+                <Text color={severity === "high" ? theme.colors.error : theme.colors.primary} wrap="wrap">{diagnostic.message}</Text>
+              </Box>
+            ))}
+          </Box>
+        )
+      })}
+      <Text> </Text>
+      <Box paddingX={5}>
+        <Text bold>Back<Text color={theme.colors.shortcut}> esc</Text></Text>
+      </Box>
+    </Box>
+  )
 }

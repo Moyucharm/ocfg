@@ -14,13 +14,13 @@ describe("TUI preferences", () => {
       theme: "system",
       diffStyle: "compact",
       mouse: false,
-      keybinds: { commandPalette: "ctrl+k" },
+      keybinds: { quit: "ctrl+k" },
     })
 
     expect(result.preferences.theme).toBe("system")
     expect(result.preferences.diffStyle).toBe("compact")
     expect(result.preferences.mouse).toBe(false)
-    expect(result.preferences.keybinds.commandPalette).toEqual(["ctrl+k"])
+    expect(result.preferences.keybinds.quit).toEqual(["ctrl+k"])
     expect(result.diagnostics).toEqual([])
   })
 

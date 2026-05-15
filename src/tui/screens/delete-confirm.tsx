@@ -26,7 +26,7 @@ export function DeleteConfirmScreen(props: {
   const expectedToken = props.target.kind === "provider" ? `delete:${props.target.providerID}` : `delete:${props.target.providerID}/${props.target.modelID}`
   const groups: OpenCodeMenuGroup[] = [{
     title: "Delete",
-    items: actions.map((action) => ({ id: action, label: action, shortcut: action === "Confirm" ? targetLabel : "esc", danger: action === "Confirm" })),
+    items: actions.map((action) => ({ id: action, label: action === "Confirm" ? `Confirm ${targetLabel}` : action, danger: action === "Confirm" })),
   }]
 
   function runSelected(index = selected) {

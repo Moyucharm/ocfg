@@ -20,7 +20,7 @@ export function SelectConfigScreen(props: {
     title: "Config target",
     items: scopes.map((scope) => {
       const target = locateConfig({ scope })
-      return { id: scope, label: scope, description: target.path, shortcut: target.exists ? "" : "missing" }
+      return { id: scope, label: scope, description: target.path, meta: target.exists ? "" : "missing" }
     }),
   }]
 

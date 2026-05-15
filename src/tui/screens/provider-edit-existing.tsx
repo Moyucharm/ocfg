@@ -7,7 +7,7 @@ import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { maskSecret, menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "name" | "base-url" | "api-key" | "channel-type" | "cache"
 type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
@@ -55,6 +55,8 @@ export function ProviderEditExistingScreen(props: {
   const currentName = typeof props.provider.name === "string" ? props.provider.name : ""
   const currentBaseURL = optionValue(props.provider, "baseURL") ?? ""
   const currentApiKey = optionValue(props.provider, "apiKey") ?? ""
+  const displayedBaseURL = draft.baseURL ?? currentBaseURL
+  const displayedApiKey = draft.apiKeyValue ? maskSecret(draft.apiKeyValue) : currentApiKey ? maskSecret(currentApiKey) : "(missing)"
   const cacheOptions = [false, true]
   const currentChannelType = draft.endpointKind ?? inferredKind.kind
   const selectedChannelType = channelTypeOptions[channelTypeIndex]!
@@ -62,13 +64,13 @@ export function ProviderEditExistingScreen(props: {
   const menuGroups: OpenCodeMenuGroup[] = [{
     title: "Provider",
     items: [
-      { id: "channel-type", label: "Channel type", shortcut: currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)" },
-      { id: "name", label: "Display name", shortcut: (draft.name ?? currentName) || "(missing)" },
-      { id: "base-url", label: "Base URL", shortcut: (draft.baseURL ?? currentBaseURL) || "(missing)" },
-      { id: "api-key", label: "API key", shortcut: draft.apiKeyValue ? "updated" : currentApiKey || "(missing)" },
-      { id: "cache", label: "setCacheKey", shortcut: String(draft.setCacheKey ?? cacheValue(props.provider)) },
-      { id: "edit-models", label: "Edit models", shortcut: "enter" },
-      { id: "review", label: "Review diff", shortcut: "enter" },
+      { id: "channel-type", label: "Channel type", meta: currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)" },
+      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)" },
+      { id: "base-url", label: "Base URL", meta: displayedBaseURL || "(missing)", detail: displayedBaseURL ? `Base URL: ${displayedBaseURL}` : undefined },
+      { id: "api-key", label: "API key", meta: displayedApiKey },
+      { id: "cache", label: "setCacheKey", meta: String(draft.setCacheKey ?? cacheValue(props.provider)) },
+      { id: "edit-models", label: "Edit models" },
+      { id: "review", label: "Review diff" },
     ],
   }]
 

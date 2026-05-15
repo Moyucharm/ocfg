@@ -116,9 +116,9 @@ export function ModelEditScreen(props: {
 
   function menuGroups(): OpenCodeMenuGroup[] {
     if (step === "choose") return [{ title: "Options", items: [{ id: "auto", label: "Auto detect models" }, { id: "manual", label: "Manual input" }] }]
-    if (step === "select") return [{ title: "Recent", items: detectedModels.map((model) => ({ id: model.id, label: model.id, description: model.name, marker: selectedModels.has(model.id) ? "●" : " " })) }]
+    if (step === "select") return [{ title: "Recent", items: detectedModels.map((model) => ({ id: model.id, label: model.id, description: model.name, marker: selectedModels.has(model.id) ? "*" : " " })) }]
     const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model), disabled: true })) : []
-    return [{ title: "Resolved", items: modelItems }, { title: "Actions", items: reviewActions.map((action) => ({ id: action, label: action, shortcut: action === "Save" ? "y" : action === "View diff" ? "d" : "b" })) }]
+    return [{ title: "Resolved", items: modelItems }, { title: "Actions", items: reviewActions.map((action) => ({ id: action, label: action })) }]
   }
 
   function runSelected(index = selected) {

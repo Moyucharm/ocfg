@@ -9,12 +9,12 @@ const groups: OpenCodeMenuGroup[] = [
   {
     title: "Commands",
     items: [
-      { id: "edit-provider", label: "Edit provider", shortcut: "ctrl+x e" },
-      { id: "add-provider", label: "Connect provider", shortcut: "ctrl+a" },
-      { id: "doctor", label: "Doctor", shortcut: "ctrl+x d" },
-      { id: "set-default-model", label: "Select model", shortcut: "ctrl+x m" },
-      { id: "switch-config", label: "Switch config target", shortcut: "ctrl+x c" },
-      { id: "delete-provider", label: "Delete provider", shortcut: "ctrl+x delete", danger: true },
+      { id: "edit-provider", label: "Edit provider" },
+      { id: "add-provider", label: "Connect provider" },
+      { id: "doctor", label: "Doctor" },
+      { id: "set-default-model", label: "Select model" },
+      { id: "switch-config", label: "Switch config target" },
+      { id: "delete-provider", label: "Delete provider", danger: true },
     ],
   },
 ]
@@ -60,7 +60,7 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
       query=""
       rows={openCodeMenuRows(groups, "")}
       selectedIndex={selected}
-      footer={["Exit\tq", "Open commands\tctrl+p"]}
+      footer={["Select\tenter", "Exit\tq"]}
     />
   )
 }

@@ -29,8 +29,8 @@ export function ModelListScreen(props: {
   const groups: OpenCodeMenuGroup[] = [{
     title: "Models",
     items: [
-      { id: "__add", label: "Add model", shortcut: "ctrl+a" },
-      ...models.map((model) => ({ id: model.id, label: model.id, description: model.name, shortcut: "d delete" })),
+      { id: "__add", label: "Add model" },
+      ...models.map((model) => ({ id: model.id, label: model.id, description: model.name })),
     ],
   }]
 

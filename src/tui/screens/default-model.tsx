@@ -36,8 +36,8 @@ export function DefaultModelScreen(props: {
 
   const selectedTarget = targets[targetIndex]!
   const groups: OpenCodeMenuGroup[] = step === "target"
-    ? [{ title: "Setting", items: targets.map((target) => ({ id: target.key, label: target.label, description: target.description, shortcut: current[target.key] ?? "(empty)" })) }]
-    : [{ title: options.length > 1 ? "Configured" : "Recent", items: options.map((option) => ({ id: option.ref ?? "__empty", label: option.label, shortcut: option.ref === current[selectedTarget.key] ? "current" : "" })) }]
+    ? [{ title: "Setting", items: targets.map((target) => ({ id: target.key, label: target.label, description: target.description, meta: current[target.key] ?? "(empty)" })) }]
+    : [{ title: options.length > 1 ? "Configured" : "Recent", items: options.map((option) => ({ id: option.ref ?? "__empty", label: option.label, meta: option.ref === current[selectedTarget.key] ? "current" : "" })) }]
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)

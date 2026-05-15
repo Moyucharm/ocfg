@@ -29,12 +29,12 @@ export function ProviderListScreen(props: {
   const groups: OpenCodeMenuGroup[] = [{
     title: "Providers",
     items: [
-      ...(mode === "add" ? [{ id: "__add", label: "Connect provider", shortcut: "ctrl+a" }] : []),
+      ...(mode === "add" ? [{ id: "__add", label: "Connect provider" }] : []),
       ...providers.map((provider) => ({
         id: provider.id,
         label: provider.id,
         description: provider.name,
-        shortcut: `${provider.modelCount} models`,
+        meta: `${provider.modelCount} models`,
         danger: mode === "delete",
       })),
     ],

@@ -9,7 +9,6 @@ export type TuiKeybindAction =
   | "back"
   | "cancel"
   | "quit"
-  | "commandPalette"
   | "toggle"
   | "toggleAll"
   | "manual"
@@ -42,7 +41,6 @@ export const defaultTuiKeybinds: TuiKeybindMap = {
   back: ["escape", "b"],
   cancel: ["escape", "ctrl+q"],
   quit: ["q"],
-  commandPalette: ["ctrl+p"],
   toggle: ["space"],
   toggleAll: ["a"],
   manual: ["m"],

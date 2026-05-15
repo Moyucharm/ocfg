@@ -6,11 +6,11 @@ import { parseTuiMouseEvent, type TuiMouseEvent } from "../mouse.js"
 import type { TuiDiffStyle } from "../preferences.js"
 import { useTuiTheme } from "../theme.js"
 import type { DiffReviewState } from "../types.js"
-import { DiffBlock, OpenCodeActionLine, OpenCodeNotice, type OpenCodeMenuItem } from "../ui.js"
+import { DiffBlock, formatOpenCodeTitle, OpenCodeActionLine, OpenCodeNotice, type OpenCodeMenuItem } from "../ui.js"
 
 const actions = [
-  { id: "confirm", label: "Confirm", shortcut: "enter" },
-  { id: "cancel", label: "Cancel", shortcut: "esc", danger: true },
+  { id: "confirm", label: "Confirm" },
+  { id: "cancel", label: "Cancel", danger: true },
 ] satisfies OpenCodeMenuItem[]
 
 function diffLineCount(diff: string) {
@@ -45,7 +45,7 @@ function Header(props: { title: string }) {
   const theme = useTuiTheme()
   return (
     <Box justifyContent="space-between" paddingX={5}>
-      <Text bold>{props.title}</Text>
+      <Text bold>{formatOpenCodeTitle(props.title)}</Text>
       <Text color={theme.colors.shortcut}>esc</Text>
     </Box>
   )
@@ -154,7 +154,7 @@ export function DiffReviewScreen(props: {
         <OpenCodeNotice tone="success">Restart OpenCode if the running session does not pick up provider changes.</OpenCodeNotice>
         <Text> </Text>
         <Section title="Actions" />
-        <OpenCodeActionLine item={{ id: "close", label: "Close", shortcut: "enter" }} selected />
+        <OpenCodeActionLine item={{ id: "close", label: "Close" }} selected />
         <Text> </Text>
         <Footer items={["Close\tenter", "Back\tb/q"]} />
       </Box>
@@ -170,7 +170,7 @@ export function DiffReviewScreen(props: {
         <FieldRow label="Message" value={props.review.error} />
         <Text> </Text>
         <Section title="Actions" />
-        <OpenCodeActionLine item={{ id: "close", label: "Close", shortcut: "enter" }} selected />
+        <OpenCodeActionLine item={{ id: "close", label: "Close" }} selected />
         <Text> </Text>
         <Footer items={["Close\tenter", "Back\tb/q"]} />
       </Box>

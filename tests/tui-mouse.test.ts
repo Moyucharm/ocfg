@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { parseTuiMouseEvent } from "../src/tui/mouse.js"
-import { centeredFramePadding, menuItemIndexFromMouse, openCodeMenuRows, type OpenCodeMenuGroup } from "../src/tui/ui.js"
+import { centeredFramePadding, maskSecret, menuItemIndexFromMouse, openCodeMenuRows, type OpenCodeMenuGroup } from "../src/tui/ui.js"
 
 describe("TUI mouse helpers", () => {
   test("parses SGR mouse click and wheel events", () => {
@@ -12,7 +12,7 @@ describe("TUI mouse helpers", () => {
 
   test("maps mouse rows to visible OpenCode menu items", () => {
     const groups: OpenCodeMenuGroup[] = [
-      { title: "Suggested", items: [{ id: "a", label: "Alpha" }] },
+      { title: "Commands", items: [{ id: "a", label: "Alpha" }] },
       { title: "Config", items: [{ id: "b", label: "Beta" }] },
     ]
     const rows = openCodeMenuRows(groups, "")
@@ -31,8 +31,14 @@ describe("TUI mouse helpers", () => {
     expect(centeredFramePadding(120)).toBe(21)
   })
 
-  test("filters OpenCode menu rows by label and shortcut", () => {
-    const rows = openCodeMenuRows([{ title: "Config", items: [{ id: "model", label: "Select model", shortcut: "ctrl+x m" }] }], "x m")
+  test("masks secrets to the head and tail only", () => {
+    expect(maskSecret("sk-1234567890abcdef")).toBe("sk-1...cdef")
+    expect(maskSecret("abcd1234")).toBe("ab...34")
+    expect(maskSecret("abc")).toBe("***")
+  })
+
+  test("filters OpenCode menu rows by label and metadata", () => {
+    const rows = openCodeMenuRows([{ title: "Config", items: [{ id: "model", label: "Select model", meta: "current" }] }], "current")
 
     expect(rows).toHaveLength(2)
     expect(rows[1]).toMatchObject({ kind: "item", itemIndex: 0 })

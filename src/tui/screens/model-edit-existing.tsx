@@ -63,14 +63,14 @@ export function ModelEditExistingScreen(props: {
   const menuGroups: OpenCodeMenuGroup[] = [{
     title: "Model",
     items: [
-      { id: "name", label: "Display name", shortcut: (draft.name ?? currentName) || "(missing)" },
-      { id: "context", label: "Context limit", shortcut: String((draft.context ?? limitValue(props.model, "context")) || "(missing)") },
-      { id: "output", label: "Output limit", shortcut: String((draft.output ?? limitValue(props.model, "output")) || "(missing)") },
-      { id: "reasoning", label: "Reasoning", shortcut: String(currentBooleanValue("reasoning")) },
-      { id: "tool-call", label: "Tool call", shortcut: String(currentBooleanValue("toolCall")) },
-      { id: "temperature", label: "Temperature", shortcut: String(currentBooleanValue("temperature")) },
-      { id: "attachment", label: "Attachment", shortcut: String(currentBooleanValue("attachment")) },
-      { id: "review", label: "Review diff", shortcut: "enter" },
+      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)" },
+      { id: "context", label: "Context limit", meta: String((draft.context ?? limitValue(props.model, "context")) || "(missing)") },
+      { id: "output", label: "Output limit", meta: String((draft.output ?? limitValue(props.model, "output")) || "(missing)") },
+      { id: "reasoning", label: "Reasoning", meta: String(currentBooleanValue("reasoning")) },
+      { id: "tool-call", label: "Tool call", meta: String(currentBooleanValue("toolCall")) },
+      { id: "temperature", label: "Temperature", meta: String(currentBooleanValue("temperature")) },
+      { id: "attachment", label: "Attachment", meta: String(currentBooleanValue("attachment")) },
+      { id: "review", label: "Review diff" },
     ],
   }]
   const booleanGroups: OpenCodeMenuGroup[] = [{ title: booleanField, items: [{ id: "false", label: "false" }, { id: "true", label: "true" }] }]

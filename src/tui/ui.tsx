@@ -10,7 +10,8 @@ export type OpenCodeMenuItem = {
   id: string
   label: string
   description?: string
-  shortcut?: string
+  meta?: string
+  detail?: string
   marker?: string
   disabled?: boolean
   danger?: boolean
@@ -35,7 +36,7 @@ export const openCodeMenuLayout = {
 function matchesMenuQuery(item: OpenCodeMenuItem, query: string) {
   if (!query.trim()) return true
   const normalized = query.trim().toLowerCase()
-  return [item.label, item.description, item.shortcut].some((value) => value?.toLowerCase().includes(normalized))
+  return [item.label, item.description, item.meta, item.detail].some((value) => value?.toLowerCase().includes(normalized))
 }
 
 export function openCodeMenuRows(groups: OpenCodeMenuGroup[], query: string): OpenCodeMenuRow[] {
@@ -72,6 +73,32 @@ function padLine(text: string, width = openCodeContentWidth) {
   return `${text}${" ".repeat(width - text.length)}`
 }
 
+function truncateLine(text: string, width: number) {
+  if (text.length <= width) return text
+  if (width <= 3) return text.slice(0, Math.max(0, width))
+  return `${text.slice(0, width - 3)}...`
+}
+
+export function formatOpenCodeTitle(title: string) {
+  return title.startsWith("OCfg") ? title : `OCfg - ${title}`
+}
+
+function formatMenuLine(left: string, right?: string) {
+  if (!right) return padLine(truncateLine(left, openCodeContentWidth))
+  const rightWidth = Math.min(right.length, Math.floor(openCodeContentWidth / 2))
+  const rightText = truncateLine(right, rightWidth)
+  const leftWidth = Math.max(1, openCodeContentWidth - rightText.length - 2)
+  const leftText = truncateLine(left, leftWidth)
+  return `${leftText}${" ".repeat(Math.max(2, openCodeContentWidth - leftText.length - rightText.length))}${rightText}`
+}
+
+export function maskSecret(value: string) {
+  if (!value) return ""
+  if (value.length <= 4) return "*".repeat(value.length)
+  if (value.length <= 10) return `${value.slice(0, 2)}...${value.slice(-2)}`
+  return `${value.slice(0, 4)}...${value.slice(-4)}`
+}
+
 export function OpenCodeFrame(props: { children: ReactNode }) {
   const { stdout } = useStdout()
   const terminalWidth = Math.max(1, stdout.columns ?? openCodeContentWidth)
@@ -88,7 +115,7 @@ export function OpenCodeFrame(props: { children: ReactNode }) {
 export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: boolean }) {
   const theme = useTuiTheme()
   const left = `${props.item.marker ? `${props.item.marker} ` : ""}${props.item.label}${props.item.description ? ` ${props.item.description}` : ""}`
-  const content = props.item.shortcut ? `${left}${" ".repeat(Math.max(1, 62 - left.length))}${props.item.shortcut}` : left
+  const right = props.item.meta
   return (
     <Text
       wrap="truncate"
@@ -96,7 +123,7 @@ export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: bo
       color={props.selected ? theme.colors.highlightText : props.item.disabled ? theme.colors.muted : props.item.danger ? theme.colors.error : theme.colors.primary}
       bold={props.selected}
     >
-      {padLine(content)}
+      {formatMenuLine(left, right)}
     </Text>
   )
 }
@@ -112,10 +139,12 @@ export function OpenCodeMenu(props: {
 }) {
   const theme = useTuiTheme()
   const showSearch = props.showSearch === true
+  const selectedRow = props.rows.find((row) => row.kind === "item" && row.itemIndex === props.selectedIndex)
+  const selectedDetail = selectedRow?.kind === "item" ? selectedRow.item.detail : undefined
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
-        <Text bold>{props.title}</Text>
+        <Text bold>{formatOpenCodeTitle(props.title)}</Text>
         <Text color={theme.colors.shortcut}>esc</Text>
       </Box>
       <Text> </Text>
@@ -146,6 +175,14 @@ export function OpenCodeMenu(props: {
         const selected = row.itemIndex === props.selectedIndex
         return <OpenCodeActionLine key={row.item.id} item={row.item} selected={selected} />
       })}
+      {selectedDetail ? (
+        <>
+          <Text> </Text>
+          <Box paddingX={5}>
+            <Text color={theme.colors.muted} wrap="wrap">{selectedDetail}</Text>
+          </Box>
+        </>
+      ) : null}
       {props.footer && props.footer.length > 0 ? (
         <>
           <Text> </Text>
@@ -178,7 +215,7 @@ export function OpenCodePrompt(props: {
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
-        <Text bold>{props.title}</Text>
+        <Text bold>{formatOpenCodeTitle(props.title)}</Text>
         <Text color={theme.colors.shortcut}>esc</Text>
       </Box>
       <Text> </Text>
@@ -188,7 +225,7 @@ export function OpenCodePrompt(props: {
       <Box paddingX={5}>
         <Text>
           <Text backgroundColor={theme.colors.highlight} color={theme.colors.highlightText}> </Text>
-          <Text>{props.masked ? "*".repeat(props.value.length) : props.value || "_"}</Text>
+          <Text wrap="wrap">{props.masked ? maskSecret(props.value) || "_" : props.value || "_"}</Text>
         </Text>
       </Box>
       {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted}>{props.hint}</Text></Box> : null}
