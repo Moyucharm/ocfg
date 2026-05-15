@@ -4,8 +4,6 @@ OpenCode provider configuration editor.
 
 [中文文档](./README.zh-CN.md)
 
-This project is a standalone configuration editor for OpenCode config files. The previously planned OpenCode plugin wrapper is deprecated for v1 and is not advertised as a supported workflow.
-
 ## Features
 
 - Inspect config health with `doctor`.
@@ -228,18 +226,6 @@ Real writes create a timestamped backup next to the target file when the target 
 Real writes go through a temporary file and atomic rename.
 
 If validation fails, the config file is not written. If a managed secret file was updated as part of a failed write, the tool attempts to restore its previous state.
-
-## Limitations
-
-This tool edits OpenCode config files; it does not modify OpenCode core.
-
-The OpenCode plugin wrapper is deprecated for v1.
-
-Runtime provider hot reload is not promised. Restart OpenCode if the running session does not pick up provider changes.
-
-The tool does not replace OpenCode's built-in model picker.
-
-The tool does not support the OpenCode Web UI in v1.
 
 ## Development
 
