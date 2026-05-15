@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react"
-import { Box, Text, useApp, useInput } from "ink"
+import React, { useEffect, useRef, useState } from "react"
+import { Box, useApp } from "ink"
 import { createConfigDiff } from "../core/diff.js"
 import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
@@ -21,14 +21,39 @@ import { ModelEditScreen } from "./screens/model-edit.js"
 import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
+import { tuiCommands } from "./actions.js"
+import { useTuiInput } from "./input.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
+import { matchesKeybind, TuiKeybindProvider } from "./keybinds.js"
+import { parseTuiMouseEvent, useMouseCapture } from "./mouse.js"
+import { defaultTuiPreferences, loadTuiPreferences } from "./preferences.js"
+import { TuiThemeProvider } from "./theme.js"
+import { menuItemIndexFromMouse, OpenCodeFrame, OpenCodeMenu, openCodeMenuRows, OpenCodeNotice } from "./ui.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+const commandGroups = [
+  {
+    title: "Commands",
+    items: [
+      { id: "edit-provider", label: "Edit provider", shortcut: "ctrl+x e" },
+      { id: "add-provider", label: "Connect provider", shortcut: "ctrl+a" },
+      { id: "doctor", label: "Doctor", shortcut: "ctrl+x d" },
+      { id: "set-default-model", label: "Select model", shortcut: "ctrl+x m" },
+      { id: "switch-config", label: "Switch config target", shortcut: "ctrl+x c" },
+      { id: "delete-provider", label: "Delete provider", shortcut: "ctrl+x delete" },
+    ],
+  },
+] satisfies Array<{ title: string; items: Array<{ id: TuiAction; label: string; shortcut?: string }> }>
+
+function CommandPalette(props: { selected: number }) {
+  return <OpenCodeMenu title="Commands" query="" rows={openCodeMenuRows(commandGroups, "")} selectedIndex={props.selected} />
 }
 
 export function App() {
@@ -37,6 +62,10 @@ export function App() {
   const routeHistory = useRef<TuiRoute[]>([])
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
   const [message, setMessage] = useState<string>()
+  const [preferenceWarning, setPreferenceWarning] = useState<string>()
+  const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [commandIndex, setCommandIndex] = useState(0)
   const [providerListMode, setProviderListMode] = useState<ProviderListMode>("add")
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
@@ -59,11 +88,67 @@ export function App() {
     setRoute(previousRoute ?? fallback)
   }
 
-  useInput((_input, key) => {
-    if (key.escape) {
-      if (route === "home") exit()
-      else goBack()
+  useEffect(() => {
+    let active = true
+    loadTuiPreferences().then((result) => {
+      if (!active) return
+      setTuiPreferences(result.preferences)
+      setPreferenceWarning(result.diagnostics.length > 0 ? result.diagnostics.join(" ") : undefined)
+    })
+    return () => {
+      active = false
     }
+  }, [])
+
+  useMouseCapture(tuiPreferences.mouse)
+
+  function runCommand(action: TuiAction) {
+    setCommandPaletteOpen(false)
+    handleHomeAction(action)
+  }
+
+  useTuiInput((input, key) => {
+    const mouse = parseTuiMouseEvent(input)
+    if (matchesKeybind("commandPalette", input, key, tuiPreferences.keybinds)) {
+      setCommandPaletteOpen(true)
+      setCommandIndex(0)
+      return
+    }
+    if (commandPaletteOpen) {
+      const rows = openCodeMenuRows(commandGroups, "")
+      const itemCount = rows.filter((row) => row.kind === "item").length
+      if (mouse) {
+        if (mouse.kind === "wheel") {
+          setCommandIndex((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, itemCount - 1), current + 1))
+          return
+        }
+        const clicked = menuItemIndexFromMouse(mouse, rows)
+        if (clicked !== undefined) {
+          setCommandIndex(clicked)
+          const item = rows.find((row) => row.kind === "item" && row.itemIndex === clicked)
+          if (item?.kind === "item") runCommand(item.item.id as TuiAction)
+          return
+        }
+      }
+      if (key.escape) {
+        setCommandPaletteOpen(false)
+        return
+      }
+      if (matchesKeybind("up", input, key, tuiPreferences.keybinds) || matchesKeybind("left", input, key, tuiPreferences.keybinds)) {
+        setCommandIndex((current) => (current === 0 ? Math.max(0, itemCount - 1) : current - 1))
+        return
+      }
+      if (matchesKeybind("down", input, key, tuiPreferences.keybinds) || matchesKeybind("right", input, key, tuiPreferences.keybinds)) {
+        setCommandIndex((current) => (current === itemCount - 1 ? 0 : current + 1))
+        return
+      }
+      if (matchesKeybind("confirm", input, key, tuiPreferences.keybinds)) {
+        const item = rows.find((row) => row.kind === "item" && row.itemIndex === commandIndex)
+        if (item?.kind === "item") runCommand(item.item.id as TuiAction)
+        return
+      }
+    }
+    if (key.escape && route === "home") exit()
   })
 
   function handleHomeAction(action: TuiAction) {
@@ -382,109 +467,112 @@ export function App() {
     setDiffReview(await commitPreparedWrite(diffReview))
   }
 
+  const routeActive = !commandPaletteOpen
+
   return (
-    <Box flexDirection="column" gap={1}>
-      <Box flexDirection="column">
-        <Text bold color="cyan">
-          OCfg - OpenCode Provider Configuration Editor
-        </Text>
-        <Text dimColor>Target: {config.target ? `${config.target.scope} ${config.target.path}` : config.scope}</Text>
-        <Text dimColor>Press Esc to go back, q to quit from Home.</Text>
-      </Box>
+    <TuiThemeProvider themeName={tuiPreferences.theme}>
+      <TuiKeybindProvider keybinds={tuiPreferences.keybinds}>
+        <OpenCodeFrame>
+          <Box flexDirection="column">
+            {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
+            {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
 
-      {message ? <Text color="yellow">{message}</Text> : null}
-
-      {route === "home" ? <HomeScreen onAction={handleHomeAction} onQuit={exit} /> : null}
-      {route === "select-config" ? (
-        <SelectConfigScreen
-          selection={config}
-          onSelect={(next) => {
-            setConfig(next)
-            goBack()
-          }}
-          onBack={() => goBack()}
-        />
-      ) : null}
-      {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
-      {route === "provider-list" ? (
-        <ProviderListScreen
-          selection={config}
-          mode={providerListMode}
-          onAdd={() => navigate("provider-edit")}
-          onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
-          onBack={() => goBack()}
-        />
-      ) : null}
-      {route === "provider-edit" ? (
-        <ProviderEditScreen
-          onBack={() => goBack()}
-          onComplete={(draft) => {
-            setProviderDraft(draft)
-            navigate("model-edit")
-          }}
-        />
-      ) : null}
-      {route === "model-edit" && providerDraft ? (
-        <ModelEditScreen draft={providerDraft} onBack={() => goBack()} onSave={saveProvider} onReviewDiff={reviewProviderDiff} />
-      ) : null}
-      {route === "provider-edit-existing" && existingProviderEdit ? (
-        <ProviderEditExistingScreen
-          providerID={existingProviderEdit.id}
-          provider={existingProviderEdit.provider}
-          onBack={() => goBack()}
-          onEditModels={() => navigate("model-list")}
-          onComplete={(draft) => void reviewExistingProviderEdit(existingProviderEdit.id, draft)}
-        />
-      ) : null}
-      {route === "model-list" && existingProviderEdit ? (
-        <ModelListScreen
-          selection={config}
-          providerID={existingProviderEdit.id}
-          onAddModel={() => void openModelAdd(existingProviderEdit.id)}
-          onBack={() => goBack()}
-          onSelectModel={(modelID) => void openExistingModelEdit(existingProviderEdit.id, modelID)}
-          onDeleteModel={(modelID) => void beginModelDelete(existingProviderEdit.id, modelID)}
-        />
-      ) : null}
-      {route === "model-add" && existingProviderEdit ? (
-        <ModelAddScreen
-          providerID={existingProviderEdit.id}
-          provider={existingProviderEdit.provider}
-          onBack={() => goBack()}
-          onReviewDiff={(generated) => void reviewAddedModels(existingProviderEdit.id, generated)}
-        />
-      ) : null}
-      {route === "model-edit-existing" && existingModelEdit ? (
-        <ModelEditExistingScreen
-          providerID={existingModelEdit.providerID}
-          modelID={existingModelEdit.modelID}
-          model={existingModelEdit.model}
-          onBack={() => goBack()}
-          onComplete={(draft) => void reviewExistingModelEdit(existingModelEdit.providerID, existingModelEdit.modelID, draft)}
-        />
-      ) : null}
-      {route === "delete-confirm" && deleteTarget ? (
-        <DeleteConfirmScreen
-          target={deleteTarget}
-          onCancel={() => goBack()}
-          onConfirm={(token) => void confirmDelete(token)}
-        />
-      ) : null}
-      {route === "default-model" ? (
-        <DefaultModelScreen
-          selection={config}
-          onBack={() => goBack()}
-          onSelect={(key, ref) => void reviewDefaultModelSelection(key, ref)}
-        />
-      ) : null}
-      {route === "diff-review" ? (
-        <DiffReviewScreen
-          review={diffReview}
-          onCancel={() => goBack(diffReturnRoute)}
-          onClose={closeCompletedDiffReview}
-          onConfirm={confirmWrite}
-        />
-      ) : null}
-    </Box>
+            {commandPaletteOpen ? <CommandPalette selected={commandIndex} /> : null}
+            {routeActive && route === "home" ? <HomeScreen selection={config} onAction={handleHomeAction} onQuit={exit} /> : null}
+            {routeActive && route === "select-config" ? (
+              <SelectConfigScreen
+                selection={config}
+                onSelect={(next) => {
+                  setConfig(next)
+                  goBack()
+                }}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {routeActive && route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
+            {routeActive && route === "provider-list" ? (
+              <ProviderListScreen
+                selection={config}
+                mode={providerListMode}
+                onAdd={() => navigate("provider-edit")}
+                onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {routeActive && route === "provider-edit" ? (
+              <ProviderEditScreen
+                onBack={() => goBack()}
+                onComplete={(draft) => {
+                  setProviderDraft(draft)
+                  navigate("model-edit")
+                }}
+              />
+            ) : null}
+            {routeActive && route === "model-edit" && providerDraft ? (
+              <ModelEditScreen draft={providerDraft} onBack={() => goBack()} onSave={saveProvider} onReviewDiff={reviewProviderDiff} />
+            ) : null}
+            {routeActive && route === "provider-edit-existing" && existingProviderEdit ? (
+              <ProviderEditExistingScreen
+                providerID={existingProviderEdit.id}
+                provider={existingProviderEdit.provider}
+                onBack={() => goBack()}
+                onEditModels={() => navigate("model-list")}
+                onComplete={(draft) => void reviewExistingProviderEdit(existingProviderEdit.id, draft)}
+              />
+            ) : null}
+            {routeActive && route === "model-list" && existingProviderEdit ? (
+              <ModelListScreen
+                selection={config}
+                providerID={existingProviderEdit.id}
+                onAddModel={() => void openModelAdd(existingProviderEdit.id)}
+                onBack={() => goBack()}
+                onSelectModel={(modelID) => void openExistingModelEdit(existingProviderEdit.id, modelID)}
+                onDeleteModel={(modelID) => void beginModelDelete(existingProviderEdit.id, modelID)}
+              />
+            ) : null}
+            {routeActive && route === "model-add" && existingProviderEdit ? (
+              <ModelAddScreen
+                providerID={existingProviderEdit.id}
+                provider={existingProviderEdit.provider}
+                onBack={() => goBack()}
+                onReviewDiff={(generated) => void reviewAddedModels(existingProviderEdit.id, generated)}
+              />
+            ) : null}
+            {routeActive && route === "model-edit-existing" && existingModelEdit ? (
+              <ModelEditExistingScreen
+                providerID={existingModelEdit.providerID}
+                modelID={existingModelEdit.modelID}
+                model={existingModelEdit.model}
+                onBack={() => goBack()}
+                onComplete={(draft) => void reviewExistingModelEdit(existingModelEdit.providerID, existingModelEdit.modelID, draft)}
+              />
+            ) : null}
+            {routeActive && route === "delete-confirm" && deleteTarget ? (
+              <DeleteConfirmScreen
+                target={deleteTarget}
+                onCancel={() => goBack()}
+                onConfirm={(token) => void confirmDelete(token)}
+              />
+            ) : null}
+            {routeActive && route === "default-model" ? (
+              <DefaultModelScreen
+                selection={config}
+                onBack={() => goBack()}
+                onSelect={(key, ref) => void reviewDefaultModelSelection(key, ref)}
+              />
+            ) : null}
+            {routeActive && route === "diff-review" ? (
+              <DiffReviewScreen
+                review={diffReview}
+                diffStyle={tuiPreferences.diffStyle}
+                onCancel={() => goBack(diffReturnRoute)}
+                onClose={closeCompletedDiffReview}
+                onConfirm={confirmWrite}
+              />
+            ) : null}
+          </Box>
+        </OpenCodeFrame>
+      </TuiKeybindProvider>
+    </TuiThemeProvider>
   )
 }

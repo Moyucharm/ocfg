@@ -1,23 +1,16 @@
 import React, { useState } from "react"
-import { Box, Text, useInput } from "ink"
 import { channelTypeOptions, channelTypeLabel } from "../../core/channel-types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import type { EndpointKind } from "../../core/types.js"
+import { useTuiInput } from "../input.js"
+import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
+import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
-type Step = "menu" | "channel-type" | "name" | "base-url" | "api-key" | "cache"
+type Mode = "menu" | "name" | "base-url" | "api-key" | "channel-type" | "cache"
 type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
-
-const fields: Array<{ field: Field; label: string }> = [
-  { field: "channel-type", label: "Channel type" },
-  { field: "name", label: "Display name" },
-  { field: "base-url", label: "Base URL" },
-  { field: "api-key", label: "Replace API key" },
-  { field: "cache", label: "setCacheKey" },
-  { field: "edit-models", label: "Edit models" },
-  { field: "review", label: "Review diff" },
-]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -25,7 +18,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function appendInput(value: string, input: string) {
   const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable) return value
+  if (!printable || printable.startsWith("[<")) return value
   return `${value}${printable}`
 }
 
@@ -47,143 +40,173 @@ export function ProviderEditExistingScreen(props: {
   onEditModels: () => void
   onBack: () => void
 }) {
-  const [step, setStep] = useState<Step>("menu")
-  const [fieldIndex, setFieldIndex] = useState(0)
   const inferredKind = tryInferEndpointKindFromProvider(props.provider)
   const defaultKindIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === inferredKind.kind))
+  const [mode, setMode] = useState<Mode>("menu")
+  const [selected, setSelected] = useState(0)
+  const [query, setQuery] = useState("")
   const [channelTypeIndex, setChannelTypeIndex] = useState(defaultKindIndex)
   const [cacheIndex, setCacheIndex] = useState(cacheValue(props.provider) ? 1 : 0)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
   const [inputValue, setInputValue] = useState("")
   const [error, setError] = useState<string>()
+  const keybinds = useTuiKeybinds()
 
   const currentName = typeof props.provider.name === "string" ? props.provider.name : ""
   const currentBaseURL = optionValue(props.provider, "baseURL") ?? ""
   const currentApiKey = optionValue(props.provider, "apiKey") ?? ""
   const cacheOptions = [false, true]
-  const selectedChannelType = channelTypeOptions[channelTypeIndex]!
   const currentChannelType = draft.endpointKind ?? inferredKind.kind
+  const selectedChannelType = channelTypeOptions[channelTypeIndex]!
+
+  const menuGroups: OpenCodeMenuGroup[] = [{
+    title: "Provider",
+    items: [
+      { id: "channel-type", label: "Channel type", shortcut: currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)" },
+      { id: "name", label: "Display name", shortcut: (draft.name ?? currentName) || "(missing)" },
+      { id: "base-url", label: "Base URL", shortcut: (draft.baseURL ?? currentBaseURL) || "(missing)" },
+      { id: "api-key", label: "API key", shortcut: draft.apiKeyValue ? "updated" : currentApiKey || "(missing)" },
+      { id: "cache", label: "setCacheKey", shortcut: String(draft.setCacheKey ?? cacheValue(props.provider)) },
+      { id: "edit-models", label: "Edit models", shortcut: "enter" },
+      { id: "review", label: "Review diff", shortcut: "enter" },
+    ],
+  }]
+
+  const selectGroups: OpenCodeMenuGroup[] = mode === "channel-type"
+    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label, description: option.description })) }]
+    : [{ title: "setCacheKey", items: cacheOptions.map((value) => ({ id: String(value), label: String(value) })) }]
 
   function startField(field: Field) {
     setError(undefined)
     if (field === "review") {
-      if (!inferredKind.kind && draft.endpointKind === undefined) {
-        setError("Unknown provider type. Please choose a channel type before saving.")
-        return
-      }
+      if (!inferredKind.kind && draft.endpointKind === undefined) return setError("Unknown provider type. Choose a channel type before saving.")
       props.onComplete(draft)
       return
     }
-    if (field === "edit-models") {
-      props.onEditModels()
-      return
-    }
+    if (field === "edit-models") return props.onEditModels()
     if (field === "channel-type") {
       setChannelTypeIndex(Math.max(0, channelTypeOptions.findIndex((option) => option.kind === (draft.endpointKind ?? inferredKind.kind ?? channelTypeOptions[0]!.kind))))
-      setStep("channel-type")
+      setMode("channel-type")
+      setSelected(0)
+      setQuery("")
+      return
     }
-    if (field === "name") {
-      setInputValue(draft.name ?? currentName)
-      setStep("name")
+    if (field === "cache") {
+      setCacheIndex((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
+      setMode("cache")
+      setSelected((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
+      setQuery("")
+      return
     }
-    if (field === "base-url") {
-      setInputValue(draft.baseURL ?? currentBaseURL)
-      setStep("base-url")
-    }
-    if (field === "api-key") {
-      setInputValue("")
-      setStep("api-key")
-    }
-    if (field === "cache") setStep("cache")
+    if (field === "name") setInputValue(draft.name ?? currentName)
+    if (field === "base-url") setInputValue(draft.baseURL ?? currentBaseURL)
+    if (field === "api-key") setInputValue("")
+    setMode(field)
   }
 
-  function saveTextField() {
+  function savePrompt() {
     const value = inputValue.trim()
-    if (step === "name") setDraft((current) => ({ ...current, name: value }))
-    if (step === "base-url") setDraft((current) => ({ ...current, baseURL: value }))
-    if (step === "api-key") {
-      if (!value) {
-        setError("API key is required.")
-        return
-      }
+    if (mode === "name") setDraft((current) => ({ ...current, name: value }))
+    if (mode === "base-url") setDraft((current) => ({ ...current, baseURL: value }))
+    if (mode === "api-key") {
+      if (!value) return setError("API key is required.")
       setDraft((current) => ({ ...current, apiKeyValue: value }))
     }
     setInputValue("")
-    setStep("menu")
+    setMode("menu")
   }
 
-  useInput((input, key) => {
-    if (input === "q" && key.ctrl) {
-      props.onBack()
+  function runMenuIndex(index = selected) {
+    const item = openCodeMenuRows(menuGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
+    if (item?.kind === "item") startField(item.item.id as Field)
+  }
+
+  function runSelectIndex(index = selected) {
+    const item = openCodeMenuRows(selectGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
+    if (item?.kind !== "item") return
+    if (mode === "channel-type") setDraft((current) => ({ ...current, endpointKind: item.item.id as EndpointKind }))
+    if (mode === "cache") setDraft((current) => ({ ...current, setCacheKey: item.item.id === "true" }))
+    setMode("menu")
+    setSelected(0)
+    setQuery("")
+  }
+
+  useTuiInput((input, key) => {
+    if (["name", "base-url", "api-key"].includes(mode)) {
+      if (matchesKeybind("cancel", input, key, keybinds)) {
+        setMode("menu")
+        setInputValue("")
+        setError(undefined)
+        return
+      }
+      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
+      else setInputValue((current) => appendInput(current, input))
       return
     }
-    if (step === "menu") {
-      if (key.upArrow) setFieldIndex((current) => (current === 0 ? fields.length - 1 : current - 1))
-      if (key.downArrow) setFieldIndex((current) => (current === fields.length - 1 ? 0 : current + 1))
-      if (key.return) startField(fields[fieldIndex]!.field)
-      return
-    }
-    if (step === "channel-type") {
-      if (key.upArrow || key.leftArrow) setChannelTypeIndex((current) => (current === 0 ? channelTypeOptions.length - 1 : current - 1))
-      if (key.downArrow || key.rightArrow) setChannelTypeIndex((current) => (current === channelTypeOptions.length - 1 ? 0 : current + 1))
-      if (key.return) {
-        setDraft((current) => ({ ...current, endpointKind: selectedChannelType.kind as EndpointKind }))
-        setStep("menu")
+
+    const groups = mode === "menu" ? menuGroups : selectGroups
+    const rows = openCodeMenuRows(groups, query)
+    const count = rows.filter((row) => row.kind === "item").length
+    const mouse = parseTuiMouseEvent(input)
+    if (mouse) {
+      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
+      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true })
+      if (clicked !== undefined) {
+        setSelected(clicked)
+        if (mode === "menu") runMenuIndex(clicked)
+        else runSelectIndex(clicked)
       }
       return
     }
-    if (step === "cache") {
-      if (key.upArrow || key.leftArrow || key.downArrow || key.rightArrow) setCacheIndex((current) => (current === 0 ? 1 : 0))
-      if (key.return) {
-        setDraft((current) => ({ ...current, setCacheKey: cacheOptions[cacheIndex]! }))
-        setStep("menu")
+    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
+      if (mode === "menu") props.onBack()
+      else {
+        setMode("menu")
+        setQuery("")
       }
       return
     }
-    if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
-    else if (key.return) {
-      setError(undefined)
-      saveTextField()
-    } else setInputValue((current) => appendInput(current, input))
+    if (key.backspace || key.delete) {
+      setQuery((current) => current.slice(0, -1))
+      setSelected(0)
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
+    if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
+    if (matchesKeybind("confirm", input, key, keybinds)) {
+      if (mode === "menu") runMenuIndex()
+      else runSelectIndex()
+    }
+    const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
+    if (printable && !printable.startsWith("[<") && !matchesKeybind("confirm", input, key, keybinds)) {
+      setQuery((current) => `${current}${printable}`)
+      setSelected(0)
+    }
   })
 
+  if (mode === "name" || mode === "base-url" || mode === "api-key") {
+    return (
+      <OpenCodePrompt
+        title="Edit provider"
+        label={mode === "name" ? "Display name" : mode === "base-url" ? "Base URL" : "API key"}
+        value={inputValue}
+        masked={mode === "api-key"}
+        error={error}
+        hint={mode === "api-key" ? `Stored automatically at ${defaultSecretFilePath(props.providerID)}` : undefined}
+      />
+    )
+  }
+
   return (
-    <Box flexDirection="column">
-      <Text bold>Edit Provider</Text>
-      <Text dimColor>Provider: {props.providerID}</Text>
-      <Text dimColor>Ctrl+Q or Esc cancels. Enter selects or saves.</Text>
-      {!inferredKind.kind ? <Text color="yellow">Unknown provider type. Please choose a channel type before saving.</Text> : null}
-      {error ? <Text color="red">{error}</Text> : null}
-      {step === "menu" ? (
-        <Box flexDirection="column">
-          <Text>Channel type: {currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)"}</Text>
-          <Text>Name: {(draft.name ?? currentName) || "(missing)"}</Text>
-          <Text>Base URL: {(draft.baseURL ?? currentBaseURL) || "(missing)"}</Text>
-          <Text>API key: {draft.apiKeyValue ? "updated" : currentApiKey || "(missing)"}</Text>
-          <Text>setCacheKey: {String(draft.setCacheKey ?? cacheValue(props.provider))}</Text>
-          {fields.map((item, index) => <Text key={item.field} color={index === fieldIndex ? "green" : undefined}>{index === fieldIndex ? "›" : " "} {item.label}</Text>)}
-        </Box>
-      ) : null}
-      {["name", "base-url"].includes(step) ? <Text>{step}: {inputValue || "_"}</Text> : null}
-      {step === "api-key" ? (
-        <Box flexDirection="column">
-          <Text>API key: {"*".repeat(inputValue.length) || "_"}</Text>
-          <Text dimColor>Stored automatically at: {defaultSecretFilePath(props.providerID)}</Text>
-        </Box>
-      ) : null}
-      {step === "channel-type" ? (
-        <Box flexDirection="column">
-          <Text>Select channel type:</Text>
-          {channelTypeOptions.map((option, index) => <Text key={option.kind} color={index === channelTypeIndex ? "green" : undefined}>{index === channelTypeIndex ? "›" : " "} {option.label}</Text>)}
-          <Text dimColor>{selectedChannelType.description}</Text>
-        </Box>
-      ) : null}
-      {step === "cache" ? (
-        <Box flexDirection="column">
-          <Text>Set provider.options.setCacheKey?</Text>
-          {cacheOptions.map((value, index) => <Text key={String(value)} color={index === cacheIndex ? "green" : undefined}>{index === cacheIndex ? "›" : " "} {String(value)}</Text>)}
-        </Box>
-      ) : null}
-    </Box>
+    <OpenCodeMenu
+      title={mode === "menu" ? `Edit ${props.providerID}` : mode === "channel-type" ? "Channel type" : "setCacheKey"}
+      query={query}
+      rows={openCodeMenuRows(mode === "menu" ? menuGroups : selectGroups, query)}
+      selectedIndex={selected}
+      showSearch
+      footer={mode === "menu" ? ["Back\tesc", "Open\tenter"] : ["Cancel\tesc", "Select\tenter"]}
+      emptyText={error}
+    />
   )
 }

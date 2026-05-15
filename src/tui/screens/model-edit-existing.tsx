@@ -1,21 +1,13 @@
 import React, { useState } from "react"
-import { Box, Text, useInput } from "ink"
+import { useTuiInput } from "../input.js"
+import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingModelEditDraft } from "../model-edit-existing.js"
+import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Field = "name" | "context" | "output" | "reasoning" | "tool-call" | "temperature" | "attachment" | "review"
-type Step = "menu" | "name" | "context" | "output" | "boolean"
+type Mode = "menu" | "name" | "context" | "output" | "boolean"
 type BooleanField = "reasoning" | "toolCall" | "temperature" | "attachment"
-
-const fields: Array<{ field: Field; label: string }> = [
-  { field: "name", label: "Display name" },
-  { field: "context", label: "Context limit" },
-  { field: "output", label: "Output limit" },
-  { field: "reasoning", label: "Reasoning" },
-  { field: "tool-call", label: "Tool call" },
-  { field: "temperature", label: "Temperature" },
-  { field: "attachment", label: "Attachment" },
-  { field: "review", label: "Review diff" },
-]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -23,7 +15,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function appendInput(value: string, input: string) {
   const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable) return value
+  if (!printable || printable.startsWith("[<")) return value
   return `${value}${printable}`
 }
 
@@ -53,13 +45,13 @@ export function ModelEditExistingScreen(props: {
   onComplete: (draft: ExistingModelEditDraft) => void
   onBack: () => void
 }) {
-  const [step, setStep] = useState<Step>("menu")
-  const [fieldIndex, setFieldIndex] = useState(0)
+  const [mode, setMode] = useState<Mode>("menu")
+  const [selected, setSelected] = useState(0)
   const [draft, setDraft] = useState<ExistingModelEditDraft>({})
   const [inputValue, setInputValue] = useState("")
   const [booleanField, setBooleanField] = useState<BooleanField>("reasoning")
-  const [booleanIndex, setBooleanIndex] = useState(0)
   const [error, setError] = useState<string>()
+  const keybinds = useTuiKeybinds()
 
   const currentName = typeof props.model.name === "string" ? props.model.name : ""
 
@@ -68,99 +60,117 @@ export function ModelEditExistingScreen(props: {
     return (draft[field] as boolean | undefined) ?? booleanValue(props.model, field)
   }
 
+  const menuGroups: OpenCodeMenuGroup[] = [{
+    title: "Model",
+    items: [
+      { id: "name", label: "Display name", shortcut: (draft.name ?? currentName) || "(missing)" },
+      { id: "context", label: "Context limit", shortcut: String((draft.context ?? limitValue(props.model, "context")) || "(missing)") },
+      { id: "output", label: "Output limit", shortcut: String((draft.output ?? limitValue(props.model, "output")) || "(missing)") },
+      { id: "reasoning", label: "Reasoning", shortcut: String(currentBooleanValue("reasoning")) },
+      { id: "tool-call", label: "Tool call", shortcut: String(currentBooleanValue("toolCall")) },
+      { id: "temperature", label: "Temperature", shortcut: String(currentBooleanValue("temperature")) },
+      { id: "attachment", label: "Attachment", shortcut: String(currentBooleanValue("attachment")) },
+      { id: "review", label: "Review diff", shortcut: "enter" },
+    ],
+  }]
+  const booleanGroups: OpenCodeMenuGroup[] = [{ title: booleanField, items: [{ id: "false", label: "false" }, { id: "true", label: "true" }] }]
+
   function startField(field: Field) {
     setError(undefined)
-    if (field === "review") {
-      props.onComplete(draft)
-      return
-    }
+    if (field === "review") return props.onComplete(draft)
     if (field === "name") {
       setInputValue(draft.name ?? currentName)
-      setStep("name")
+      setMode("name")
     }
     if (field === "context") {
       setInputValue(draft.context === undefined ? limitValue(props.model, "context") : String(draft.context))
-      setStep("context")
+      setMode("context")
     }
     if (field === "output") {
       setInputValue(draft.output === undefined ? limitValue(props.model, "output") : String(draft.output))
-      setStep("output")
+      setMode("output")
     }
     if (["reasoning", "tool-call", "temperature", "attachment"].includes(field)) {
       const nextField = field === "tool-call" ? "toolCall" : (field as BooleanField)
       setBooleanField(nextField)
-      setBooleanIndex(currentBooleanValue(nextField) ? 1 : 0)
-      setStep("boolean")
+      setSelected(currentBooleanValue(nextField) ? 1 : 0)
+      setMode("boolean")
     }
   }
 
-  function saveTextField() {
+  function savePrompt() {
     try {
-      if (step === "name") setDraft((current) => ({ ...current, name: inputValue.trim() }))
-      if (step === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.trim(), "context") }))
-      if (step === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.trim(), "output") }))
+      if (mode === "name") setDraft((current) => ({ ...current, name: inputValue.trim() }))
+      if (mode === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.trim(), "context") }))
+      if (mode === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.trim(), "output") }))
       setInputValue("")
-      setStep("menu")
+      setMode("menu")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     }
   }
 
-  function saveBooleanField() {
-    const value = booleanIndex === 1
-    setDraft((current) => ({ ...current, [booleanField]: value }))
-    setStep("menu")
+  function runMenuIndex(index = selected) {
+    const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
+    if (item?.kind === "item") startField(item.item.id as Field)
   }
 
-  useInput((input, key) => {
-    if (input === "q" && key.ctrl) {
-      props.onBack()
+  function runBooleanIndex(index = selected) {
+    setDraft((current) => ({ ...current, [booleanField]: index === 1 }))
+    setMode("menu")
+    setSelected(0)
+  }
+
+  useTuiInput((input, key) => {
+    if (["name", "context", "output"].includes(mode)) {
+      if (matchesKeybind("cancel", input, key, keybinds)) {
+        setMode("menu")
+        setInputValue("")
+        setError(undefined)
+        return
+      }
+      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
+      else setInputValue((current) => appendInput(current, input))
       return
     }
-    if (step === "menu") {
-      if (key.upArrow) setFieldIndex((current) => (current === 0 ? fields.length - 1 : current - 1))
-      if (key.downArrow) setFieldIndex((current) => (current === fields.length - 1 ? 0 : current + 1))
-      if (key.return) startField(fields[fieldIndex]!.field)
+    const groups = mode === "boolean" ? booleanGroups : menuGroups
+    const rows = openCodeMenuRows(groups, "")
+    const count = rows.filter((row) => row.kind === "item").length
+    const mouse = parseTuiMouseEvent(input)
+    if (mouse) {
+      const clicked = menuItemIndexFromMouse(mouse, rows)
+      if (clicked !== undefined) {
+        setSelected(clicked)
+        if (mode === "boolean") runBooleanIndex(clicked)
+        else runMenuIndex(clicked)
+      }
       return
     }
-    if (step === "boolean") {
-      if (key.upArrow || key.leftArrow || key.downArrow || key.rightArrow) setBooleanIndex((current) => (current === 0 ? 1 : 0))
-      if (key.return) saveBooleanField()
+    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
+      if (mode === "menu") props.onBack()
+      else setMode("menu")
       return
     }
-    if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
-    else if (key.return) {
-      setError(undefined)
-      saveTextField()
-    } else setInputValue((current) => appendInput(current, input))
+    if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
+    if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
+    if (matchesKeybind("confirm", input, key, keybinds)) {
+      if (mode === "boolean") runBooleanIndex()
+      else runMenuIndex()
+    }
   })
 
+  if (mode === "name" || mode === "context" || mode === "output") {
+    return <OpenCodePrompt title={`Edit ${props.modelID}`} label={mode} value={inputValue} error={error} footer={["Save\tenter", "Cancel\tesc"]} />
+  }
+
   return (
-    <Box flexDirection="column">
-      <Text bold>Edit Model</Text>
-      <Text dimColor>Provider: {props.providerID}</Text>
-      <Text dimColor>Model: {props.modelID}</Text>
-      <Text dimColor>Ctrl+Q or Esc cancels. Enter selects or saves.</Text>
-      {error ? <Text color="red">{error}</Text> : null}
-      {step === "menu" ? (
-        <Box flexDirection="column">
-          <Text>Name: {(draft.name ?? currentName) || "(missing)"}</Text>
-          <Text>Context: {(draft.context ?? limitValue(props.model, "context")) || "(missing)"}</Text>
-          <Text>Output: {(draft.output ?? limitValue(props.model, "output")) || "(missing)"}</Text>
-          <Text>Reasoning: {String(currentBooleanValue("reasoning"))}</Text>
-          <Text>Tool call: {String(currentBooleanValue("toolCall"))}</Text>
-          <Text>Temperature: {String(currentBooleanValue("temperature"))}</Text>
-          <Text>Attachment: {String(currentBooleanValue("attachment"))}</Text>
-          {fields.map((item, index) => <Text key={item.field} color={index === fieldIndex ? "green" : undefined}>{index === fieldIndex ? "›" : " "} {item.label}</Text>)}
-        </Box>
-      ) : null}
-      {["name", "context", "output"].includes(step) ? <Text>{step}: {inputValue || "_"}</Text> : null}
-      {step === "boolean" ? (
-        <Box flexDirection="column">
-          <Text>{booleanField}:</Text>
-          {[false, true].map((value, index) => <Text key={String(value)} color={index === booleanIndex ? "green" : undefined}>{index === booleanIndex ? "›" : " "} {String(value)}</Text>)}
-        </Box>
-      ) : null}
-    </Box>
+    <OpenCodeMenu
+      title={mode === "boolean" ? booleanField : `Edit ${props.modelID}`}
+      query=""
+      rows={openCodeMenuRows(mode === "boolean" ? booleanGroups : menuGroups, "")}
+      selectedIndex={selected}
+      footer={mode === "boolean" ? ["Select\tenter", "Cancel\tesc"] : ["Open\tenter", "Back\tesc"]}
+    />
   )
 }

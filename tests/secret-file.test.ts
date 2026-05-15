@@ -12,6 +12,8 @@ function mode(value: number) {
   return value & 0o777
 }
 
+const supportsPrivateModeAssertions = process.platform !== "win32"
+
 describe("secret file", () => {
   test("generates stable safe paths from provider IDs", () => {
     expect(defaultSecretFilePath("My OpenAI.Provider", "/home/test")).toBe(
@@ -31,8 +33,10 @@ describe("secret file", () => {
 
     expect(result.path).toBe(filePath)
     expect(await readFile(filePath, "utf8")).toBe("sk-test")
-    expect(mode((await stat(path.dirname(filePath))).mode)).toBe(0o700)
-    expect(mode((await stat(filePath)).mode)).toBe(0o600)
+    if (supportsPrivateModeAssertions) {
+      expect(mode((await stat(path.dirname(filePath))).mode)).toBe(0o700)
+      expect(mode((await stat(filePath)).mode)).toBe(0o600)
+    }
   })
 
   test("overwrites existing secret files", async () => {
@@ -55,7 +59,7 @@ describe("secret file", () => {
     await restoreSecretFile(snapshot)
 
     expect(await readFile(filePath, "utf8")).toBe("old")
-    expect(mode((await stat(filePath)).mode)).toBe(0o600)
+    if (supportsPrivateModeAssertions) expect(mode((await stat(filePath)).mode)).toBe(0o600)
   })
 
   test("removes a newly-created secret when restoring a missing snapshot", async () => {

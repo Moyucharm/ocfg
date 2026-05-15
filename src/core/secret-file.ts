@@ -15,16 +15,28 @@ function safeProviderFileName(providerID: string) {
     .replace(/^-|-$/g, "")
 }
 
-export function expandHomePath(filePath: string, home = os.homedir()) {
+function defaultHome() {
+  return process.env.HOME || os.homedir()
+}
+
+function usesWindowsPath(home: string) {
+  return /^[a-zA-Z]:[\\/]/.test(home) || home.includes("\\")
+}
+
+function joinHomePath(home: string, ...parts: string[]) {
+  return usesWindowsPath(home) ? path.win32.join(home, ...parts) : path.posix.join(home, ...parts)
+}
+
+export function expandHomePath(filePath: string, home = defaultHome()) {
   if (filePath === "~") return home
-  if (filePath.startsWith("~/")) return path.join(home, filePath.slice(2))
+  if (filePath.startsWith("~/") || filePath.startsWith("~\\")) return joinHomePath(home, filePath.slice(2))
   return filePath
 }
 
 export function defaultSecretFilePath(providerID: string, home = "~") {
   const fileName = safeProviderFileName(providerID)
   if (!fileName) throw new Error("Provider ID is required to create a secret file path")
-  return path.join(home, ".config", "ocfg", "secrets", `${fileName}.api-key`)
+  return joinHomePath(home, ".config", "ocfg", "secrets", `${fileName}.api-key`)
 }
 
 export async function writeSecretFileSafely(options: { path: string; value: string }): Promise<{ path: string }> {

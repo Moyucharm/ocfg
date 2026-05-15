@@ -1,42 +1,26 @@
 import React, { useState } from "react"
-import { Box, Text, useInput } from "ink"
+import { Text } from "ink"
 import { detectModels, type DetectedModel } from "../../core/model-detector.js"
 import { loadModelsDev } from "../../core/models-dev.js"
 import { createProviderDraftFromEndpoint, type GeneratedProviderDraft } from "../../core/provider-generator.js"
 import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
+import { useTuiInput } from "../input.js"
+import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { parseTuiMouseEvent } from "../mouse.js"
 import type { ProviderFlowDraft } from "../types.js"
+import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "choose" | "input" | "detecting" | "select" | "review" | "loading"
 const reviewActions = ["Save", "View diff", "Back"] as const
 
 function summarizeModel(model: ModelDraft) {
   const limit = model.limit ? `${model.limit.context}/${model.limit.output}` : "missing limit"
-  const input = model.modalities?.input.join(",") ?? "unknown input"
-  const output = model.modalities?.output.join(",") ?? "unknown output"
-  return `limit ${limit}, ${input} -> ${output}, reasoning=${String(model.reasoning ?? false)}, tools=${String(model.tool_call ?? false)}`
-}
-
-function summarizeSources(generated: GeneratedProviderDraft, modelID: string) {
-  const resolution = generated.modelResolutions[modelID]
-  if (!resolution) return "Metadata: unknown"
-  const modelsDev = resolution.sources.find((source) => source.type === "models.dev")
-  if (modelsDev?.type === "models.dev") return `Metadata: models.dev ${modelsDev.providerID}/${modelsDev.modelID} (${modelsDev.confidence})`
-  const family = resolution.sources.find((source) => source.type === "template" && source.template === "family")
-  if (family?.type === "template") return `Metadata: built-in ${family.family ?? "family"} template fallback`
-  return "Metadata: built-in generic template fallback"
-}
-
-function summarizeVariants(model: ModelDraft) {
-  const variants = Object.keys(model.variants ?? {})
-  return variants.length > 0 ? `Variants: ${variants.join(", ")}` : "Variants: not available"
+  return `limit ${limit}, reasoning=${String(model.reasoning ?? false)}, tools=${String(model.tool_call ?? false)}`
 }
 
 function parseModelIDs(value: string) {
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
+  return value.split(",").map((part) => part.trim()).filter(Boolean)
 }
 
 export function ModelEditScreen(props: {
@@ -47,16 +31,14 @@ export function ModelEditScreen(props: {
 }) {
   const template = getEndpointTemplate(props.draft.endpointKind)
   const [step, setStep] = useState<Step>(template.supportsModelProbe && props.draft.baseURL ? "choose" : "input")
-  const [modeIndex, setModeIndex] = useState(0)
+  const [selected, setSelected] = useState(0)
   const [modelText, setModelText] = useState("")
   const [detectedModels, setDetectedModels] = useState<DetectedModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
-  const [selectedIndex, setSelectedIndex] = useState(0)
   const [generated, setGenerated] = useState<GeneratedProviderDraft>()
-  const [reviewActionIndex, setReviewActionIndex] = useState(0)
   const [error, setError] = useState<string>()
   const [metadataWarnings, setMetadataWarnings] = useState<string[]>([])
-  const modes = ["Auto detect models", "Manual input"]
+  const keybinds = useTuiKeybinds()
 
   async function resolveModels(modelIDs = parseModelIDs(modelText)) {
     if (modelIDs.length === 0) {
@@ -71,7 +53,7 @@ export function ModelEditScreen(props: {
       try {
         modelsDevData = await loadModelsDev()
       } catch (caught) {
-        setMetadataWarnings([`models.dev metadata unavailable; falling back to built-in templates: ${caught instanceof Error ? caught.message : String(caught)}`])
+        setMetadataWarnings([`models.dev unavailable; using built-in templates: ${caught instanceof Error ? caught.message : String(caught)}`])
         modelsDevData = {}
       }
       const result = await createProviderDraftFromEndpoint({
@@ -85,24 +67,12 @@ export function ModelEditScreen(props: {
         modelsDev: { data: modelsDevData },
       })
       setGenerated(result)
-      setReviewActionIndex(0)
+      setSelected(Object.keys(result.provider.models).length)
       setStep("review")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
       setStep("input")
     }
-  }
-
-  function goBackFromReview() {
-    if (detectedModels.length > 0) setStep("select")
-    else setStep("input")
-  }
-
-  function runReviewAction(action: (typeof reviewActions)[number]) {
-    if (!generated) return
-    if (action === "Save") void props.onSave(generated)
-    if (action === "View diff") void props.onReviewDiff(generated)
-    if (action === "Back") goBackFromReview()
   }
 
   async function probeModels() {
@@ -122,13 +92,10 @@ export function ModelEditScreen(props: {
       }
       const result = await detectModels(props.draft.endpointKind, props.draft.baseURL, { apiKey })
       if (result.diagnostics.length > 0) setError(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-      if (result.models.length === 0) {
-        setStep("input")
-        return
-      }
+      if (result.models.length === 0) return setStep("input")
       setDetectedModels(result.models)
       setSelectedModels(new Set(result.models.map((model) => model.id)))
-      setSelectedIndex(0)
+      setSelected(0)
       setStep("select")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -136,8 +103,8 @@ export function ModelEditScreen(props: {
     }
   }
 
-  function toggleSelectedModel() {
-    const model = detectedModels[selectedIndex]
+  function toggleSelectedModel(index = selected) {
+    const model = detectedModels[index]
     if (!model) return
     setSelectedModels((current) => {
       const next = new Set(current)
@@ -147,107 +114,88 @@ export function ModelEditScreen(props: {
     })
   }
 
-  function toggleAllModels() {
-    setSelectedModels((current) => current.size === detectedModels.length ? new Set() : new Set(detectedModels.map((model) => model.id)))
+  function menuGroups(): OpenCodeMenuGroup[] {
+    if (step === "choose") return [{ title: "Options", items: [{ id: "auto", label: "Auto detect models" }, { id: "manual", label: "Manual input" }] }]
+    if (step === "select") return [{ title: "Recent", items: detectedModels.map((model) => ({ id: model.id, label: model.id, description: model.name, marker: selectedModels.has(model.id) ? "●" : " " })) }]
+    const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model), disabled: true })) : []
+    return [{ title: "Resolved", items: modelItems }, { title: "Actions", items: reviewActions.map((action) => ({ id: action, label: action, shortcut: action === "Save" ? "y" : action === "View diff" ? "d" : "b" })) }]
   }
 
-  useInput((input, key) => {
-    if (input === "q" && key.ctrl) {
-      props.onBack()
+  function runSelected(index = selected) {
+    if (step === "choose") {
+      if (index === 0) void probeModels()
+      else setStep("input")
       return
     }
-    if (step === "detecting" || step === "loading") return
-    if (step === "choose") {
-      if (key.upArrow || key.leftArrow) setModeIndex((current) => (current === 0 ? modes.length - 1 : current - 1))
-      if (key.downArrow || key.rightArrow) setModeIndex((current) => (current === modes.length - 1 ? 0 : current + 1))
-      if (key.return) {
-        if (modeIndex === 0) void probeModels()
-        else setStep("input")
-      }
+    if (step === "select") {
+      toggleSelectedModel(index)
+      return
     }
+    if (step === "review" && generated) {
+      const modelCount = Object.keys(generated.provider.models).length
+      const action = reviewActions[index - modelCount]
+      if (action === "Save") void props.onSave(generated)
+      if (action === "View diff") void props.onReviewDiff(generated)
+      if (action === "Back") setStep(detectedModels.length > 0 ? "select" : "input")
+    }
+  }
+
+  useTuiInput((input, key) => {
+    if (matchesKeybind("cancel", input, key, keybinds)) return props.onBack()
+    if (step === "detecting" || step === "loading") return
     if (step === "input") {
       if (key.backspace || key.delete) setModelText((current) => current.slice(0, -1))
-      else if (key.return) void resolveModels()
+      else if (matchesKeybind("confirm", input, key, keybinds)) void resolveModels()
       else {
         const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-        if (printable) setModelText((current) => `${current}${printable}`)
+        if (printable && !printable.startsWith("[<")) setModelText((current) => `${current}${printable}`)
       }
+      return
     }
-    if (step === "select") {
-      if (key.upArrow || key.leftArrow) setSelectedIndex((current) => (current === 0 ? detectedModels.length - 1 : current - 1))
-      if (key.downArrow || key.rightArrow) setSelectedIndex((current) => (current === detectedModels.length - 1 ? 0 : current + 1))
-      if (input === " ") toggleSelectedModel()
-      if (input === "a") toggleAllModels()
-      if (input === "m") setStep("input")
-      if (input === "r") void probeModels()
-      if (key.return) void resolveModels(detectedModels.map((model) => model.id).filter((id) => selectedModels.has(id)))
+
+    const rows = openCodeMenuRows(menuGroups(), "")
+    const count = rows.filter((row) => row.kind === "item").length
+    const mouse = parseTuiMouseEvent(input)
+    if (mouse) {
+      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
+      const clicked = menuItemIndexFromMouse(mouse, rows)
+      if (clicked !== undefined) {
+        setSelected(clicked)
+        runSelected(clicked)
+      }
+      return
     }
-    if (step === "review") {
-      if (key.upArrow || key.leftArrow) setReviewActionIndex((current) => (current === 0 ? reviewActions.length - 1 : current - 1))
-      if (key.downArrow || key.rightArrow) setReviewActionIndex((current) => (current === reviewActions.length - 1 ? 0 : current + 1))
-      if (input === "y") runReviewAction("Save")
-      if (input === "d") runReviewAction("View diff")
-      if (input === "b") goBackFromReview()
-      if (key.return) runReviewAction(reviewActions[reviewActionIndex]!)
+    if (matchesKeybind("back", input, key, keybinds)) {
+      if (step === "review") setStep(detectedModels.length > 0 ? "select" : "input")
+      else props.onBack()
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds) || matchesKeybind("left", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
+    if (matchesKeybind("down", input, key, keybinds) || matchesKeybind("right", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
+    if (matchesKeybind("toggle", input, key, keybinds) && step === "select") toggleSelectedModel()
+    if (matchesKeybind("toggleAll", input, key, keybinds) && step === "select") setSelectedModels((current) => current.size === detectedModels.length ? new Set() : new Set(detectedModels.map((model) => model.id)))
+    if (matchesKeybind("manual", input, key, keybinds) && step === "select") setStep("input")
+    if (matchesKeybind("retry", input, key, keybinds) && step === "select") void probeModels()
+    if (matchesKeybind("save", input, key, keybinds) && step === "review" && generated) void props.onSave(generated)
+    if (matchesKeybind("diff", input, key, keybinds) && step === "review" && generated) void props.onReviewDiff(generated)
+    if (matchesKeybind("confirm", input, key, keybinds)) {
+      if (step === "select") void resolveModels(detectedModels.map((model) => model.id).filter((id) => selectedModels.has(id)))
+      else runSelected()
     }
   })
 
+  if (step === "input") return <OpenCodePrompt title="Models" label="Model IDs" value={modelText} error={error} hint="Separate multiple model IDs with commas." footer={["Continue\tenter", "Cancel\tesc"]} />
+  if (step === "detecting") return <Text>Detecting models from {props.draft.baseURL}/models...</Text>
+  if (step === "loading") return <Text>Resolving model capabilities...</Text>
+
   return (
-    <Box flexDirection="column">
-      <Text bold>Models</Text>
-      <Text dimColor>Provider: {props.draft.providerID} ({template.label})</Text>
-      {error ? <Text color="red">{error}</Text> : null}
-      {step === "choose" ? (
-        <Box flexDirection="column">
-          <Text>Choose how to add models:</Text>
-          {modes.map((mode, index) => <Text key={mode} color={index === modeIndex ? "green" : undefined}>{index === modeIndex ? "›" : " "} {mode}</Text>)}
-          <Text dimColor>Auto detection probes {props.draft.baseURL}/models.</Text>
-        </Box>
-      ) : null}
-      {step === "input" ? (
-        <Box flexDirection="column">
-          <Text>Enter model IDs separated by commas:</Text>
-          <Text>{modelText || "_"}</Text>
-        </Box>
-      ) : null}
-      {step === "detecting" ? <Text>Detecting models from {props.draft.baseURL}/models...</Text> : null}
-      {step === "select" ? (
-        <Box flexDirection="column">
-          <Text>Select detected models:</Text>
-          {detectedModels.map((model, index) => (
-            <Text key={model.id} color={index === selectedIndex ? "green" : undefined}>
-              {index === selectedIndex ? "›" : " "} {selectedModels.has(model.id) ? "[x]" : "[ ]"} {model.id}{model.name ? ` - ${model.name}` : ""}
-            </Text>
-          ))}
-          <Text dimColor>Space toggles, a toggles all, m manual, r retries, Enter continues.</Text>
-        </Box>
-      ) : null}
-      {step === "loading" ? <Text>Resolving model capabilities...</Text> : null}
-      {step === "review" && generated ? (
-        <Box flexDirection="column">
-          <Text bold>Resolved Capabilities</Text>
-          {metadataWarnings.map((warning) => <Text key={warning} color="yellow">{warning}</Text>)}
-          {generated.warnings.map((warning) => <Text key={warning} color="yellow">{warning}</Text>)}
-          {Object.entries(generated.provider.models).map(([modelID, model]) => (
-            <Box key={modelID} flexDirection="column" marginBottom={1}>
-              <Text color={generated.modelConfirmations[modelID] ? "yellow" : "green"}>{modelID}</Text>
-              {model.name ? <Text>Name: {model.name}</Text> : null}
-              <Text>{summarizeModel(model)}</Text>
-              <Text>{summarizeSources(generated, modelID)}</Text>
-              <Text>{summarizeVariants(model)}</Text>
-              {generated.modelConfirmations[modelID] ? <Text color="yellow">Needs confirmation: family/generic metadata.</Text> : null}
-            </Box>
-          ))}
-          <Text>Choose next step:</Text>
-          {reviewActions.map((action, index) => (
-            <Text key={action} color={index === reviewActionIndex ? "green" : undefined}>
-              {index === reviewActionIndex ? "›" : " "} {action}
-            </Text>
-          ))}
-          <Text dimColor>Enter selects, y saves, d views diff, b goes back.</Text>
-        </Box>
-      ) : null}
-      <Text dimColor>Ctrl+Q or Esc returns Home.</Text>
-    </Box>
+    <OpenCodeMenu
+      title={step === "choose" ? "Models" : step === "select" ? "Select models" : "Resolved models"}
+      query=""
+      rows={openCodeMenuRows(menuGroups(), "")}
+      selectedIndex={selected}
+      footer={step === "select" ? ["Toggle\tspace", "All\ta", "Manual\tm", "Retry\tr", "Continue\tenter"] : step === "review" ? ["Save\ty", "Diff\td", "Back\tb"] : ["Select\tenter", "Cancel\tesc"]}
+      emptyText={metadataWarnings[0] ?? error}
+    />
   )
 }

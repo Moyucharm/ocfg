@@ -1,40 +1,162 @@
 import React, { useState } from "react"
-import { Box, Text, useInput } from "ink"
+import { Box, Text } from "ink"
+import { useTuiInput } from "../input.js"
+import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { parseTuiMouseEvent, type TuiMouseEvent } from "../mouse.js"
+import type { TuiDiffStyle } from "../preferences.js"
+import { useTuiTheme } from "../theme.js"
 import type { DiffReviewState } from "../types.js"
+import { DiffBlock, OpenCodeActionLine, OpenCodeNotice, type OpenCodeMenuItem } from "../ui.js"
 
-const actions = ["Confirm", "Cancel"] as const
+const actions = [
+  { id: "confirm", label: "Confirm", shortcut: "enter" },
+  { id: "cancel", label: "Cancel", shortcut: "esc", danger: true },
+] satisfies OpenCodeMenuItem[]
 
-export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: () => Promise<void> | void; onCancel: () => void; onClose: () => void }) {
+function diffLineCount(diff: string) {
+  return diff ? diff.split(/\r?\n/).length : 1
+}
+
+function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, writing: boolean) {
+  if (event.kind !== "press" || event.button !== "left") return undefined
+  let rowsBeforeActions = 0
+  rowsBeforeActions += 1 // title
+  rowsBeforeActions += 1 // spacer
+  rowsBeforeActions += 1 // Target section
+  rowsBeforeActions += 1 // target path
+  if (review.secretFile) rowsBeforeActions += 1
+  rowsBeforeActions += 1 // spacer
+  if (writing) rowsBeforeActions += 1
+  if (review.diagnostics && review.diagnostics.length > 0) {
+    rowsBeforeActions += 1 // Diagnostics section
+    rowsBeforeActions += review.diagnostics.length
+    rowsBeforeActions += 1 // spacer
+  }
+  rowsBeforeActions += 1 // Changes section
+  rowsBeforeActions += diffLineCount(review.diff)
+  rowsBeforeActions += 1 // spacer
+  rowsBeforeActions += 1 // Actions section
+
+  const actionIndex = event.y - (rowsBeforeActions + 1)
+  return actionIndex >= 0 && actionIndex < actions.length ? actionIndex : undefined
+}
+
+function Header(props: { title: string }) {
+  const theme = useTuiTheme()
+  return (
+    <Box justifyContent="space-between" paddingX={5}>
+      <Text bold>{props.title}</Text>
+      <Text color={theme.colors.shortcut}>esc</Text>
+    </Box>
+  )
+}
+
+function Section(props: { title: string }) {
+  const theme = useTuiTheme()
+  return (
+    <Box paddingX={5}>
+      <Text bold color={theme.colors.section}>{props.title}</Text>
+    </Box>
+  )
+}
+
+function FieldRow(props: { label: string; value: string; dim?: boolean }) {
+  const theme = useTuiTheme()
+  return (
+    <Box paddingX={5}>
+      <Text color={props.dim ? theme.colors.muted : theme.colors.primary}>
+        <Text color={theme.colors.muted}>{props.label}: </Text>
+        {props.value}
+      </Text>
+    </Box>
+  )
+}
+
+function Footer(props: { items: string[] }) {
+  const theme = useTuiTheme()
+  return (
+    <Box paddingX={5} gap={3}>
+      {props.items.map((item, index) => {
+        const [label, shortcut] = item.split("\t")
+        return (
+          <Text key={`${item}-${index}`} bold>
+            {label}{shortcut ? <Text color={theme.colors.shortcut}> {shortcut}</Text> : null}
+          </Text>
+        )
+      })}
+    </Box>
+  )
+}
+
+export function DiffReviewScreen(props: {
+  review: DiffReviewState
+  diffStyle: TuiDiffStyle
+  onConfirm: () => Promise<void> | void
+  onCancel: () => void
+  onClose: () => void
+}) {
   const [selected, setSelected] = useState(0)
   const [writing, setWriting] = useState(false)
+  const keybinds = useTuiKeybinds()
 
-  useInput((input, key) => {
-    if (writing) return
+  function selectPrevious() {
+    setSelected((current) => (current === 0 ? actions.length - 1 : current - 1))
+  }
+
+  function selectNext() {
+    setSelected((current) => (current === actions.length - 1 ? 0 : current + 1))
+  }
+
+  function performAction(actionIndex: number) {
+    if (actions[actionIndex]?.id === "confirm") {
+      setWriting(true)
+      void Promise.resolve().then(() => props.onConfirm()).finally(() => setWriting(false))
+    } else {
+      props.onCancel()
+    }
+  }
+
+  useTuiInput((input, key) => {
+    const mouseEvent = parseTuiMouseEvent(input)
     if (props.review.completed || props.review.error) {
-      if (input === "q" || input === "b" || key.return) props.onClose()
+      if (mouseEvent?.kind === "press" && mouseEvent.button === "left") props.onClose()
+      if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds) || matchesKeybind("confirm", input, key, keybinds)) props.onClose()
       return
     }
-    if (input === "q") props.onCancel()
-    if (key.leftArrow || key.upArrow) setSelected((current) => (current === 0 ? actions.length - 1 : current - 1))
-    if (key.rightArrow || key.downArrow) setSelected((current) => (current === actions.length - 1 ? 0 : current + 1))
-    if (key.return) {
-      if (actions[selected] === "Confirm") {
-        setWriting(true)
-        Promise.resolve(props.onConfirm()).finally(() => setWriting(false))
+
+    if (writing) return
+    if (mouseEvent) {
+      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-up") selectPrevious()
+      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-down") selectNext()
+      const clicked = actionIndexFromMouse(mouseEvent, props.review, writing)
+      if (clicked !== undefined) {
+        setSelected(clicked)
+        performAction(clicked)
       }
-      else props.onCancel()
+      return
     }
+    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onCancel()
+    if (matchesKeybind("left", input, key, keybinds) || matchesKeybind("up", input, key, keybinds)) selectPrevious()
+    if (matchesKeybind("right", input, key, keybinds) || matchesKeybind("down", input, key, keybinds)) selectNext()
+    if (matchesKeybind("confirm", input, key, keybinds)) performAction(selected)
   })
 
   if (props.review.completed) {
     return (
       <Box flexDirection="column">
-        <Text bold color="green">Config written.</Text>
-        <Text>Target: {props.review.result?.targetPath ?? props.review.targetPath}</Text>
-        {props.review.result?.backupPath ? <Text>Backup: {props.review.result.backupPath}</Text> : null}
-        {props.review.secretFilePath ? <Text>API key file: {props.review.secretFilePath}</Text> : null}
-        <Text>Next steps: restart OpenCode if the running session does not pick up provider changes.</Text>
-        <Text dimColor>Press Enter, b, or q to return Home.</Text>
+        <Header title="Config written" />
+        <Text> </Text>
+        <Section title="Result" />
+        <FieldRow label="Target" value={props.review.result?.targetPath ?? props.review.targetPath} />
+        {props.review.result?.backupPath ? <FieldRow label="Backup" value={props.review.result.backupPath} /> : null}
+        {props.review.secretFilePath ? <FieldRow label="API key file" value={props.review.secretFilePath} /> : null}
+        <Text> </Text>
+        <OpenCodeNotice tone="success">Restart OpenCode if the running session does not pick up provider changes.</OpenCodeNotice>
+        <Text> </Text>
+        <Section title="Actions" />
+        <OpenCodeActionLine item={{ id: "close", label: "Close", shortcut: "enter" }} selected />
+        <Text> </Text>
+        <Footer items={["Close\tenter", "Back\tb/q"]} />
       </Box>
     )
   }
@@ -42,39 +164,46 @@ export function DiffReviewScreen(props: { review: DiffReviewState; onConfirm: ()
   if (props.review.error) {
     return (
       <Box flexDirection="column">
-        <Text bold color="red">Write failed.</Text>
-        <Text>{props.review.error}</Text>
-        <Text dimColor>Press Enter, b, or q to return Home.</Text>
+        <Header title="Write failed" />
+        <Text> </Text>
+        <Section title="Error" />
+        <FieldRow label="Message" value={props.review.error} />
+        <Text> </Text>
+        <Section title="Actions" />
+        <OpenCodeActionLine item={{ id: "close", label: "Close", shortcut: "enter" }} selected />
+        <Text> </Text>
+        <Footer items={["Close\tenter", "Back\tb/q"]} />
       </Box>
     )
   }
 
   return (
     <Box flexDirection="column">
-      <Text bold>Diff Review</Text>
-      <Text dimColor>{props.review.targetPath}</Text>
-      {props.review.secretFile ? <Text dimColor>API key will be stored at: {props.review.secretFile.path}</Text> : null}
-      {writing ? <Text color="yellow">Writing...</Text> : null}
+      <Header title="Diff review" />
+      <Text> </Text>
+      <Section title="Target" />
+      <FieldRow label="Path" value={props.review.targetPath} />
+      {props.review.secretFile ? <FieldRow label="API key file" value={props.review.secretFile.path} dim /> : null}
+      <Text> </Text>
+      {writing ? <OpenCodeNotice>Writing...</OpenCodeNotice> : null}
       {props.review.diagnostics && props.review.diagnostics.length > 0 ? (
-        <Box flexDirection="column" marginY={1}>
-          <Text color="yellow">Diagnostics must be resolved before writing:</Text>
+        <>
+          <Section title="Diagnostics" />
           {props.review.diagnostics.map((diagnostic, index) => (
-            <Text key={index}>[{diagnostic.severity}] {diagnostic.message}</Text>
+            <FieldRow key={`${diagnostic.message}-${index}`} label={diagnostic.severity} value={diagnostic.message} />
           ))}
-        </Box>
+          <Text> </Text>
+        </>
       ) : null}
-      <Box borderStyle="round" flexDirection="column" paddingX={1}>
-        <Text>{props.review.diff || "No changes."}</Text>
-      </Box>
-      <Text color="yellow">A write must be explicitly confirmed before it can happen.</Text>
-      <Box gap={2}>
-        {actions.map((action, index) => (
-          <Text key={action} color={index === selected ? "green" : undefined}>
-            {index === selected ? "›" : " "} {action}
-          </Text>
-        ))}
-      </Box>
-      <Text dimColor>Enter selects, q or Esc cancels.</Text>
+      <Section title="Changes" />
+      <DiffBlock diff={props.review.diff} style={props.diffStyle} />
+      <Text> </Text>
+      <Section title="Actions" />
+      {actions.map((action, index) => (
+        <OpenCodeActionLine key={action.id} item={action} selected={index === selected} />
+      ))}
+      <Text> </Text>
+      <Footer items={["Select\tenter", "Cancel\tesc"]} />
     </Box>
   )
 }

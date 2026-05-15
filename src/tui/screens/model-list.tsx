@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from "react"
-import { Box, Text, useInput } from "ink"
+import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
+import { useTuiInput } from "../input.js"
+import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { parseTuiMouseEvent } from "../mouse.js"
 import type { TuiConfigSelection } from "../types.js"
+import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -18,33 +22,61 @@ export function ModelListScreen(props: {
 }) {
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([])
   const [selected, setSelected] = useState(0)
-  const [targetPath, setTargetPath] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
+  const keybinds = useTuiKeybinds()
 
-  useInput((input, key) => {
-    if (input === "q" || input === "b") props.onBack()
-    const itemCount = models.length + 1
-    if (key.upArrow) setSelected((current) => (current === 0 ? itemCount - 1 : current - 1))
-    if (key.downArrow) setSelected((current) => (current === itemCount - 1 ? 0 : current + 1))
-    if (input === "d") {
-      const model = models[selected - 1]
-      if (model) props.onDeleteModel(model.id)
+  const groups: OpenCodeMenuGroup[] = [{
+    title: "Models",
+    items: [
+      { id: "__add", label: "Add model", shortcut: "ctrl+a" },
+      ...models.map((model) => ({ id: model.id, label: model.id, description: model.name, shortcut: "d delete" })),
+    ],
+  }]
+
+  function selectedItem(index = selected) {
+    return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
+  }
+
+  function runSelected(index = selected) {
+    const item = selectedItem(index)
+    if (item?.kind !== "item") return
+    if (item.item.id === "__add") props.onAddModel()
+    else props.onSelectModel(item.item.id)
+  }
+
+  useTuiInput((input, key) => {
+    const rows = openCodeMenuRows(groups, "")
+    const count = rows.filter((row) => row.kind === "item").length
+    const mouse = parseTuiMouseEvent(input)
+    if (mouse) {
+      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
+      const clicked = menuItemIndexFromMouse(mouse, rows)
+      if (clicked !== undefined) {
+        setSelected(clicked)
+        runSelected(clicked)
+      }
       return
     }
-    if (key.return) {
-      if (selected === 0) {
-        props.onAddModel()
-        return
-      }
-      const model = models[selected - 1]
-      if (model) props.onSelectModel(model.id)
+    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
+      props.onBack()
+      return
     }
+    if (matchesKeybind("delete", input, key, keybinds)) {
+      const item = selectedItem()
+      if (item?.kind === "item" && item.item.id !== "__add") props.onDeleteModel(item.item.id)
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
+    if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
+    if (matchesKeybind("confirm", input, key, keybinds)) runSelected()
   })
 
   useEffect(() => {
     let active = true
     async function load() {
+      setLoading(true)
+      setError(undefined)
       try {
         const target = props.selection.target ?? locateConfig({ scope: props.selection.scope })
         const document = await readConfig(target)
@@ -57,8 +89,8 @@ export function ModelListScreen(props: {
           name: isRecord(value) && typeof value.name === "string" ? value.name : undefined,
         }))
         if (!active) return
-        setTargetPath(target.path)
         setModels(nextModels)
+        setSelected(0)
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {
@@ -74,19 +106,5 @@ export function ModelListScreen(props: {
   if (loading) return <Text>Loading models...</Text>
   if (error) return <Text color="red">Failed to load models: {error}</Text>
 
-  return (
-    <Box flexDirection="column">
-      <Text bold>Edit Model</Text>
-      <Text dimColor>{targetPath || "No config target"}</Text>
-      <Text dimColor>Provider: {props.providerID}</Text>
-      {models.length === 0 ? <Text color="yellow">No models configured for this provider yet.</Text> : null}
-      <Text color={selected === 0 ? "green" : undefined}>{selected === 0 ? "›" : " "} Add new model</Text>
-      {models.map((model, index) => (
-        <Text key={model.id} color={index + 1 === selected ? "green" : undefined}>
-          {index + 1 === selected ? "›" : " "} {model.id}{model.name ? ` (${model.name})` : ""}
-        </Text>
-      ))}
-      <Text dimColor>Enter adds or edits. d deletes the selected model. b, q, or Esc returns.</Text>
-    </Box>
-  )
+  return <OpenCodeMenu title="Select model" query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={["Add\tctrl+a", "Delete\td", "Back\tesc"]} />
 }
