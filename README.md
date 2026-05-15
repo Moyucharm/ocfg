@@ -2,6 +2,8 @@
 
 OpenCode provider configuration editor.
 
+[中文文档](./README.zh-CN.md)
+
 This project is a standalone configuration editor for OpenCode config files. The previously planned OpenCode plugin wrapper is deprecated for v1 and is not advertised as a supported workflow.
 
 ## Features
