@@ -39,7 +39,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const endpointTemplate = getEndpointTemplate(endpointKind)
 
   const selectGroups: OpenCodeMenuGroup[] = step === "endpoint"
-    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label, description: option.description })) }]
+    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
     : [{ title: "setCacheKey", items: cacheOptions.map((value) => ({ id: String(value), label: String(value) })) }]
 
   function finish(setCacheKey: boolean) {
@@ -121,7 +121,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true })
+      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true, selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelect(clicked)

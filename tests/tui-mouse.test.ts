@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { parseTuiMouseEvent } from "../src/tui/mouse.js"
-import { centeredFramePadding, maskSecret, menuItemIndexFromMouse, openCodeMenuRows, type OpenCodeMenuGroup } from "../src/tui/ui.js"
+import { centeredFramePadding, formatMenuLine, maskSecret, menuItemIndexFromMouse, openCodeMenuRows, openCodeMenuViewport, textCellWidth, type OpenCodeMenuGroup } from "../src/tui/ui.js"
 
 describe("TUI mouse helpers", () => {
   test("parses SGR mouse click and wheel events", () => {
@@ -24,6 +24,30 @@ describe("TUI mouse helpers", () => {
     expect(menuItemIndexFromMouse({ kind: "press", button: "right", x: 1, y: 4 }, rows)).toBeUndefined()
   })
 
+  test("keeps selected menu items inside a clipped viewport", () => {
+    const groups: OpenCodeMenuGroup[] = [{
+      title: "Models",
+      items: Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, label: `model-${index}` })),
+    }]
+    const rows = openCodeMenuRows(groups, "")
+    const viewport = openCodeMenuViewport(rows, 8, 4)
+    const visibleItemIndexes = viewport.rows.flatMap((entry) => entry.row.kind === "item" ? [entry.row.itemIndex] : [])
+
+    expect(viewport.hiddenBefore).toBe(true)
+    expect(visibleItemIndexes).toContain(8)
+    expect(visibleItemIndexes.length).toBeLessThanOrEqual(4)
+  })
+
+  test("maps mouse rows through a clipped menu viewport", () => {
+    const groups: OpenCodeMenuGroup[] = [{
+      title: "Models",
+      items: Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, label: `model-${index}` })),
+    }]
+    const rows = openCodeMenuRows(groups, "")
+
+    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 3 }, rows, { selectedIndex: 8, maxHeight: 4 })).toBe(5)
+  })
+
   test("centers the fixed-width TUI frame when the terminal is wider", () => {
     expect(centeredFramePadding(undefined)).toBe(0)
     expect(centeredFramePadding(78)).toBe(0)
@@ -42,5 +66,28 @@ describe("TUI mouse helpers", () => {
 
     expect(rows).toHaveLength(2)
     expect(rows[1]).toMatchObject({ kind: "item", itemIndex: 0 })
+  })
+
+  test("measures wide terminal cells for Chinese metadata", () => {
+    expect(textCellWidth("已添加")).toBe(6)
+    expect(formatMenuLine({ id: "existing", label: "gpt-oss-120b-medium", meta: "已添加" }, { width: 28 }).endsWith("已添加")).toBe(true)
+  })
+
+  test("keeps right metadata visible while aligning label and description columns", () => {
+    const line = formatMenuLine(
+      { id: "provider", label: "milki-gemini", description: "自用API-国模", meta: "5 models" },
+      { width: 40, labelColumnWidth: 12 },
+    )
+
+    expect(line).toContain("milki-gemini 自用API-国模")
+    expect(line.endsWith("5 models")).toBe(true)
+    expect(textCellWidth(line)).toBe(40)
+  })
+
+  test("pads labels to a shared table column before descriptions", () => {
+    const line = formatMenuLine({ id: "provider", label: "milki", description: "自用API", meta: "3 models" }, { width: 38, labelColumnWidth: 12 })
+
+    expect(line.startsWith("milki        自用API")).toBe(true)
+    expect(line.endsWith("3 models")).toBe(true)
   })
 })

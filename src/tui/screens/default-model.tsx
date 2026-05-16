@@ -12,8 +12,8 @@ import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMe
 type Step = "target" | "model"
 
 const targets: Array<{ key: DefaultModelKey; label: string; description: string }> = [
-  { key: "model", label: "model", description: "Primary default model" },
-  { key: "small_model", label: "small_model", description: "Small/default lightweight model" },
+  { key: "model", label: "主模型", description: "Primary default model" },
+  { key: "small_model", label: "小模型", description: "Small/default lightweight model" },
 ]
 
 function currentValue(config: Record<string, unknown>, key: DefaultModelKey) {
@@ -58,7 +58,7 @@ export function DefaultModelScreen(props: {
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((value) => mouse.button === "wheel-up" ? Math.max(0, value - 1) : Math.min(Math.max(0, count - 1), value + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)

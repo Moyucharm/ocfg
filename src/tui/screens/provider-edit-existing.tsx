@@ -65,7 +65,7 @@ export function ProviderEditExistingScreen(props: {
     title: "Provider",
     items: [
       { id: "channel-type", label: "Channel type", meta: currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)" },
-      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)" },
+      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)", detail: (draft.name ?? currentName) ? `Display name: ${draft.name ?? currentName}` : undefined },
       { id: "base-url", label: "Base URL", meta: displayedBaseURL || "(missing)", detail: displayedBaseURL ? `Base URL: ${displayedBaseURL}` : undefined },
       { id: "api-key", label: "API key", meta: displayedApiKey },
       { id: "cache", label: "setCacheKey", meta: String(draft.setCacheKey ?? cacheValue(props.provider)) },
@@ -75,7 +75,7 @@ export function ProviderEditExistingScreen(props: {
   }]
 
   const selectGroups: OpenCodeMenuGroup[] = mode === "channel-type"
-    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label, description: option.description })) }]
+    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
     : [{ title: "setCacheKey", items: cacheOptions.map((value) => ({ id: String(value), label: String(value) })) }]
 
   function startField(field: Field) {
@@ -153,7 +153,7 @@ export function ProviderEditExistingScreen(props: {
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true })
+      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true, selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         if (mode === "menu") runMenuIndex(clicked)

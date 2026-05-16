@@ -37,6 +37,7 @@ export function ModelAddScreen(props: {
   const existingModelIDs = configuredModelIDs(props.provider)
   const [step, setStep] = useState<Step>(template.supportsModelProbe && baseURL ? "choose" : "input")
   const [selected, setSelected] = useState(0)
+  const [query, setQuery] = useState("")
   const [modelText, setModelText] = useState("")
   const [detectedModels, setDetectedModels] = useState<DetectedModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
@@ -103,6 +104,7 @@ export function ModelAddScreen(props: {
       setDetectedModels(result.models)
       setSelectedModels(new Set(selectableModels))
       setSelected(0)
+      setQuery("")
       setMetadataWarnings(selectableModels.length === result.models.length ? [] : ["Already configured models are shown for reference."])
       setStep("select")
     } catch (caught) {
@@ -111,13 +113,29 @@ export function ModelAddScreen(props: {
     }
   }
 
-  function toggleSelectedModel(index = selected) {
-    const model = detectedModels[index]
-    if (!model || existingModelIDs.has(model.id)) return
+  function menuQuery() {
+    return step === "select" ? query : ""
+  }
+
+  function rowsForStep() {
+    return openCodeMenuRows(menuGroups(), menuQuery())
+  }
+
+  function selectedMenuItem(rows = rowsForStep(), index = selected) {
+    const row = rows.find((entry) => entry.kind === "item" && entry.itemIndex === index)
+    return row?.kind === "item" ? row.item : undefined
+  }
+
+  function selectableVisibleModelIDs(rows = rowsForStep()) {
+    return rows.flatMap((row) => row.kind === "item" && !row.item.disabled ? [row.item.id] : [])
+  }
+
+  function toggleSelectedModel(modelID = selectedMenuItem()?.id) {
+    if (!modelID || existingModelIDs.has(modelID)) return
     setSelectedModels((current) => {
       const next = new Set(current)
-      if (next.has(model.id)) next.delete(model.id)
-      else next.add(model.id)
+      if (next.has(modelID)) next.delete(modelID)
+      else next.add(modelID)
       return next
     })
   }
@@ -127,7 +145,23 @@ export function ModelAddScreen(props: {
       return [{ title: "Options", items: [{ id: "auto", label: "Auto detect models" }, { id: "manual", label: "Manual input" }] }]
     }
     if (step === "select") {
-      return [{ title: "Recent", items: detectedModels.map((model) => ({ id: model.id, label: model.id, description: model.name, marker: selectedModels.has(model.id) ? "*" : " ", disabled: existingModelIDs.has(model.id) })) }]
+      return [{
+        title: "Recent",
+        items: detectedModels.map((model) => {
+          const alreadyAdded = existingModelIDs.has(model.id)
+          const isSelected = selectedModels.has(model.id) && !alreadyAdded
+          return {
+            id: model.id,
+            label: model.id,
+            description: model.name,
+            marker: isSelected ? "x" : " ",
+            meta: alreadyAdded ? "已添加" : undefined,
+            backgroundColor: alreadyAdded ? "black" : undefined,
+            disabled: alreadyAdded,
+            selected: isSelected,
+          }
+        }),
+      }]
     }
     const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model), disabled: true })) : []
     return [{ title: "Resolved", items: modelItems }, { title: "Actions", items: reviewActions.map((action) => ({ id: action, label: action })) }]
@@ -140,7 +174,7 @@ export function ModelAddScreen(props: {
       return
     }
     if (step === "select") {
-      toggleSelectedModel(index)
+      toggleSelectedModel(selectedMenuItem(rowsForStep(), index)?.id)
       return
     }
     if (step === "review" && generated) {
@@ -164,12 +198,12 @@ export function ModelAddScreen(props: {
       return
     }
 
-    const rows = openCodeMenuRows(menuGroups(), "")
+    const rows = rowsForStep()
     const count = rows.filter((row) => row.kind === "item").length
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: step === "select", selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)
@@ -181,17 +215,59 @@ export function ModelAddScreen(props: {
       else props.onBack()
       return
     }
-    if (matchesKeybind("up", input, key, keybinds) || matchesKeybind("left", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
-    if (matchesKeybind("down", input, key, keybinds) || matchesKeybind("right", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
-    if (matchesKeybind("toggle", input, key, keybinds) && step === "select") toggleSelectedModel()
-    if (matchesKeybind("toggleAll", input, key, keybinds) && step === "select") setSelectedModels((current) => current.size === selectableDetectedModels(detectedModels, existingModelIDs).length ? new Set() : new Set(selectableDetectedModels(detectedModels, existingModelIDs)))
-    if (matchesKeybind("manual", input, key, keybinds) && step === "select") setStep("input")
-    if (matchesKeybind("retry", input, key, keybinds) && step === "select") void probeModels()
+    if (step === "select" && (key.backspace || key.delete)) {
+      setQuery((current) => current.slice(0, -1))
+      setSelected(0)
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds) || matchesKeybind("left", input, key, keybinds)) {
+      setSelected((current) => count <= 0 ? 0 : current === 0 ? Math.max(0, count - 1) : Math.min(current - 1, count - 1))
+      return
+    }
+    if (matchesKeybind("down", input, key, keybinds) || matchesKeybind("right", input, key, keybinds)) {
+      setSelected((current) => count <= 0 ? 0 : current === count - 1 ? 0 : Math.min(current + 1, count - 1))
+      return
+    }
+    if (matchesKeybind("toggle", input, key, keybinds) && step === "select") {
+      toggleSelectedModel()
+      return
+    }
+    if (key.ctrl && matchesKeybind("toggleAll", input, key, keybinds) && step === "select") {
+      const visibleModelIDs = selectableVisibleModelIDs(rows)
+      setSelectedModels((current) => {
+        const next = new Set(current)
+        const allVisibleSelected = visibleModelIDs.length > 0 && visibleModelIDs.every((id) => next.has(id))
+        for (const modelID of visibleModelIDs) {
+          if (allVisibleSelected) next.delete(modelID)
+          else next.add(modelID)
+        }
+        return next
+      })
+      return
+    }
+    if (key.ctrl && matchesKeybind("manual", input, key, keybinds) && step === "select") {
+      setStep("input")
+      setQuery("")
+      return
+    }
+    if (key.ctrl && matchesKeybind("retry", input, key, keybinds) && step === "select") {
+      setQuery("")
+      void probeModels()
+      return
+    }
     if (matchesKeybind("confirm", input, key, keybinds)) {
       if (step === "select") void resolveModels(detectedModels.map((model) => model.id).filter((id) => selectedModels.has(id)))
       else runSelected()
+      return
     }
     if (matchesKeybind("diff", input, key, keybinds) && step === "review" && generated) void props.onReviewDiff(generated)
+    if (step === "select") {
+      const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
+      if (printable && !printable.startsWith("[<")) {
+        setQuery((current) => `${current}${printable}`)
+        setSelected(0)
+      }
+    }
   })
 
   if (step === "input") return <OpenCodePrompt title="Add models" label="Model IDs" value={modelText} error={error} hint="Separate multiple model IDs with commas." footer={["Continue\tenter", "Cancel\tesc"]} />
@@ -201,10 +277,11 @@ export function ModelAddScreen(props: {
   return (
     <OpenCodeMenu
       title={step === "choose" ? "Add models" : step === "select" ? "Select models" : "Resolved models"}
-      query=""
-      rows={openCodeMenuRows(menuGroups(), "")}
+      query={menuQuery()}
+      rows={rowsForStep()}
       selectedIndex={selected}
-      footer={step === "select" ? ["Toggle\tspace", "All\ta", "Manual\tm", "Retry\tr", "Continue\tenter"] : step === "review" ? ["Diff\td", "Back\tb"] : ["Select\tenter", "Cancel\tesc"]}
+      showSearch={step === "select"}
+      footer={step === "select" ? ["Toggle\tspace", "All\tctrl+a", "Manual\tctrl+m", "Retry\tctrl+r", "Continue\tenter"] : step === "review" ? ["Diff\td", "Back\tb"] : ["Select\tenter", "Cancel\tesc"]}
       emptyText={metadataWarnings[0] ?? error}
     />
   )

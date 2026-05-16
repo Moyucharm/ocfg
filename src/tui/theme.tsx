@@ -38,7 +38,7 @@ const opencodeTheme: TuiTheme = {
     brand: "cyan",
     primary: "white",
     accent: "magenta",
-    selected: "white",
+    selected: "green",
     muted: "gray",
     warning: "yellow",
     error: "red",

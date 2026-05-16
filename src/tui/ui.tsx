@@ -1,4 +1,4 @@
-import React, { type ReactNode } from "react"
+import React, { useEffect, useState, type ReactNode } from "react"
 import { Box, Text, useStdout } from "ink"
 import type { TuiDiffStyle } from "./preferences.js"
 import { useTuiTheme } from "./theme.js"
@@ -13,6 +13,8 @@ export type OpenCodeMenuItem = {
   meta?: string
   detail?: string
   marker?: string
+  selected?: boolean
+  backgroundColor?: string
   disabled?: boolean
   danger?: boolean
 }
@@ -31,6 +33,12 @@ export const openCodeMenuLayout = {
   searchRow: 3,
   firstContentRow: 3,
   firstContentRowWithSearch: 5,
+}
+
+export type OpenCodeMenuViewportRow = {
+  row: OpenCodeMenuRow
+  rowIndex: number
+  hasTopMargin: boolean
 }
 
 function matchesMenuQuery(item: OpenCodeMenuItem, query: string) {
@@ -56,40 +64,203 @@ export function centeredFramePadding(columns: number | undefined, contentWidth =
   return Math.floor((columns - contentWidth) / 2)
 }
 
-export function menuItemIndexFromMouse(event: TuiMouseEvent, rows: OpenCodeMenuRow[], options?: { showSearch?: boolean }) {
+export function terminalContentWidth(columns: number | undefined, maxWidth = openCodeContentWidth) {
+  return Math.max(1, Math.min(maxWidth, columns ?? maxWidth))
+}
+
+function terminalHeight(rows: number | undefined) {
+  return Math.max(1, rows ?? process.stdout.rows ?? 24)
+}
+
+export function openCodeMenuContentHeight(options?: { showSearch?: boolean; hasFooter?: boolean; hasDetail?: boolean; terminalRows?: number }) {
+  const chromeRows = 2 + (options?.showSearch ? 2 : 0) + (options?.hasDetail ? 2 : 0) + (options?.hasFooter ? 2 : 0)
+  return Math.max(1, terminalHeight(options?.terminalRows) - chromeRows)
+}
+
+function menuViewportFromStart(rows: OpenCodeMenuRow[], startIndex: number, maxHeight: number) {
+  const viewportRows: OpenCodeMenuViewportRow[] = []
+  let height = 0
+
+  for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]!
+    const hasTopMargin = row.kind === "section" && rowIndex > 0 && viewportRows.length > 0
+    const rowHeight = hasTopMargin ? 2 : 1
+    if (viewportRows.length > 0 && height + rowHeight > maxHeight) break
+    viewportRows.push({ row, rowIndex, hasTopMargin })
+    height += rowHeight
+    if (height >= maxHeight) break
+  }
+
+  return viewportRows
+}
+
+export function openCodeMenuViewport(rows: OpenCodeMenuRow[], selectedIndex: number, maxHeight: number) {
+  const safeMaxHeight = Math.max(1, Math.floor(maxHeight))
+  if (rows.length === 0) {
+    return { rows: [] as OpenCodeMenuViewportRow[], hiddenBefore: false, hiddenAfter: false, maxHeight: safeMaxHeight }
+  }
+
+  const selectedRowIndex = Math.max(0, rows.findIndex((row) => row.kind === "item" && row.itemIndex === selectedIndex))
+  let startIndex = 0
+  let viewportRows = menuViewportFromStart(rows, startIndex, safeMaxHeight)
+
+  if (!viewportRows.some((entry) => entry.rowIndex === selectedRowIndex)) {
+    startIndex = selectedRowIndex
+    while (startIndex > 0) {
+      const candidate = menuViewportFromStart(rows, startIndex - 1, safeMaxHeight)
+      if (!candidate.some((entry) => entry.rowIndex === selectedRowIndex)) break
+      startIndex -= 1
+      viewportRows = candidate
+    }
+    viewportRows = menuViewportFromStart(rows, startIndex, safeMaxHeight)
+  }
+
+  const firstRowIndex = viewportRows[0]?.rowIndex ?? 0
+  const lastRowIndex = viewportRows.at(-1)?.rowIndex ?? rows.length - 1
+  return {
+    rows: viewportRows,
+    hiddenBefore: firstRowIndex > 0,
+    hiddenAfter: lastRowIndex < rows.length - 1,
+    maxHeight: safeMaxHeight,
+  }
+}
+
+export function menuItemIndexFromMouse(
+  event: TuiMouseEvent,
+  rows: OpenCodeMenuRow[],
+  options?: { showSearch?: boolean; selectedIndex?: number; maxHeight?: number; terminalRows?: number; hasFooter?: boolean; hasDetail?: boolean },
+) {
   if (event.kind !== "press" || event.button !== "left") return undefined
+  const maxHeight = options?.maxHeight ?? openCodeMenuContentHeight({
+    showSearch: options?.showSearch,
+    hasFooter: options?.hasFooter,
+    hasDetail: options?.hasDetail,
+    terminalRows: options?.terminalRows,
+  })
+  const viewport = openCodeMenuViewport(rows, options?.selectedIndex ?? 0, maxHeight)
   let visualRow = options?.showSearch ? openCodeMenuLayout.firstContentRowWithSearch : openCodeMenuLayout.firstContentRow
-  for (let index = 0; index < rows.length; index++) {
-    const row = rows[index]
-    if (row.kind === "section" && index > 0) visualRow += 1
+  for (const entry of viewport.rows) {
+    const row = entry.row
+    if (entry.hasTopMargin) visualRow += 1
     if (event.y === visualRow) return row.kind === "item" ? row.itemIndex : undefined
     visualRow += 1
   }
   return undefined
 }
 
-function padLine(text: string, width = openCodeContentWidth) {
-  if (text.length >= width) return text
-  return `${text}${" ".repeat(width - text.length)}`
+function isCombiningCodePoint(codePoint: number) {
+  return (
+    (codePoint >= 0x0300 && codePoint <= 0x036f) ||
+    (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
+    (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
+    (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
+    (codePoint >= 0xfe20 && codePoint <= 0xfe2f)
+  )
+}
+
+function isWideCodePoint(codePoint: number) {
+  return (
+    codePoint >= 0x1100 && (
+      codePoint <= 0x115f ||
+      codePoint === 0x2329 ||
+      codePoint === 0x232a ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6)
+    )
+  )
+}
+
+function cellWidthForChar(char: string) {
+  const codePoint = char.codePointAt(0) ?? 0
+  if (codePoint === 0) return 0
+  if (codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0
+  if (isCombiningCodePoint(codePoint)) return 0
+  return isWideCodePoint(codePoint) ? 2 : 1
+}
+
+export function textCellWidth(text: string) {
+  return Array.from(text).reduce((width, char) => width + cellWidthForChar(char), 0)
+}
+
+function padCells(text: string, width: number) {
+  const padding = width - textCellWidth(text)
+  return padding > 0 ? `${text}${" ".repeat(padding)}` : text
+}
+
+function truncateCells(text: string, width: number) {
+  if (width <= 0) return ""
+  if (textCellWidth(text) <= width) return text
+  if (width <= 3) {
+    let result = ""
+    let used = 0
+    for (const char of Array.from(text)) {
+      const charWidth = cellWidthForChar(char)
+      if (used + charWidth > width) break
+      result += char
+      used += charWidth
+    }
+    return padCells(result, width)
+  }
+
+  const targetWidth = width - 3
+  let result = ""
+  let used = 0
+  for (const char of Array.from(text)) {
+    const charWidth = cellWidthForChar(char)
+    if (used + charWidth > targetWidth) break
+    result += char
+    used += charWidth
+  }
+  return `${padCells(result, targetWidth)}...`
 }
 
 function truncateLine(text: string, width: number) {
-  if (text.length <= width) return text
-  if (width <= 3) return text.slice(0, Math.max(0, width))
-  return `${text.slice(0, width - 3)}...`
+  return truncateCells(text, width)
 }
 
 export function formatOpenCodeTitle(title: string) {
   return title.startsWith("OCfg") ? title : `OCfg - ${title}`
 }
 
-function formatMenuLine(left: string, right?: string) {
-  if (!right) return padLine(truncateLine(left, openCodeContentWidth))
-  const rightWidth = Math.min(right.length, Math.floor(openCodeContentWidth / 2))
-  const rightText = truncateLine(right, rightWidth)
-  const leftWidth = Math.max(1, openCodeContentWidth - rightText.length - 2)
-  const leftText = truncateLine(left, leftWidth)
-  return `${leftText}${" ".repeat(Math.max(2, openCodeContentWidth - leftText.length - rightText.length))}${rightText}`
+function menuLabelText(item: OpenCodeMenuItem) {
+  return `${item.marker ? `${item.marker} ` : ""}${item.label}`
+}
+
+function menuLabelColumnWidth(rows: OpenCodeMenuRow[], width: number) {
+  const labelWidths = rows.flatMap((row) => row.kind === "item" && row.item.description ? [textCellWidth(menuLabelText(row.item))] : [])
+  if (labelWidths.length === 0) return undefined
+  return Math.min(Math.max(...labelWidths), Math.max(1, Math.floor(width * 0.55)))
+}
+
+export function formatMenuLine(item: OpenCodeMenuItem, options?: { width?: number; labelColumnWidth?: number }) {
+  const width = Math.max(1, options?.width ?? openCodeContentWidth)
+  const label = menuLabelText(item)
+  const right = item.meta
+  if (right && width <= 3) return truncateCells(right, width)
+  const rightWidth = right ? Math.min(textCellWidth(right), Math.max(1, width - 3)) : 0
+  const rightText = right ? truncateCells(right, rightWidth) : ""
+  const leftWidth = right ? Math.max(1, width - rightWidth - 2) : width
+
+  let leftText: string
+  if (item.description) {
+    const labelWidth = Math.min(options?.labelColumnWidth ?? textCellWidth(label), leftWidth)
+    const descriptionWidth = leftWidth - labelWidth - 1
+    if (descriptionWidth > 0) {
+      leftText = `${padCells(truncateCells(label, labelWidth), labelWidth)} ${truncateCells(item.description, descriptionWidth)}`
+    } else {
+      leftText = truncateCells(label, leftWidth)
+    }
+  } else {
+    leftText = truncateCells(label, leftWidth)
+  }
+
+  if (!right) return padCells(leftText, width)
+  return `${padCells(leftText, leftWidth)}  ${rightText}`
 }
 
 export function maskSecret(value: string) {
@@ -102,7 +273,7 @@ export function maskSecret(value: string) {
 export function OpenCodeFrame(props: { children: ReactNode }) {
   const { stdout } = useStdout()
   const terminalWidth = Math.max(1, stdout.columns ?? openCodeContentWidth)
-  const contentWidth = Math.min(openCodeContentWidth, terminalWidth)
+  const contentWidth = terminalContentWidth(terminalWidth)
   return (
     <Box width={terminalWidth} paddingLeft={centeredFramePadding(terminalWidth)}>
       <Box flexDirection="column" width={contentWidth}>
@@ -112,18 +283,18 @@ export function OpenCodeFrame(props: { children: ReactNode }) {
   )
 }
 
-export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: boolean }) {
+export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: boolean; width?: number; labelColumnWidth?: number }) {
   const theme = useTuiTheme()
-  const left = `${props.item.marker ? `${props.item.marker} ` : ""}${props.item.label}${props.item.description ? ` ${props.item.description}` : ""}`
-  const right = props.item.meta
+  const backgroundColor = props.selected ? theme.colors.highlight : props.item.selected ? theme.colors.selected : props.item.backgroundColor
+  const selectedText = props.selected || props.item.selected
   return (
     <Text
       wrap="truncate"
-      backgroundColor={props.selected ? theme.colors.highlight : undefined}
-      color={props.selected ? theme.colors.highlightText : props.item.disabled ? theme.colors.muted : props.item.danger ? theme.colors.error : theme.colors.primary}
-      bold={props.selected}
+      backgroundColor={backgroundColor}
+      color={props.selected ? theme.colors.highlightText : props.item.selected ? theme.colors.primary : props.item.disabled ? theme.colors.muted : props.item.danger ? theme.colors.error : theme.colors.primary}
+      bold={props.selected || props.item.selected}
     >
-      {formatMenuLine(left, right)}
+      {formatMenuLine(props.item, { width: props.width ?? openCodeContentWidth, labelColumnWidth: props.labelColumnWidth })}
     </Text>
   )
 }
@@ -138,9 +309,17 @@ export function OpenCodeMenu(props: {
   emptyText?: string
 }) {
   const theme = useTuiTheme()
+  const { stdout } = useStdout()
+  const contentWidth = terminalContentWidth(stdout.columns)
   const showSearch = props.showSearch === true
   const selectedRow = props.rows.find((row) => row.kind === "item" && row.itemIndex === props.selectedIndex)
   const selectedDetail = selectedRow?.kind === "item" ? selectedRow.item.detail : undefined
+  const viewport = openCodeMenuViewport(
+    props.rows,
+    props.selectedIndex,
+    openCodeMenuContentHeight({ showSearch, hasFooter: Boolean(props.footer?.length), hasDetail: Boolean(selectedDetail), terminalRows: stdout.rows }),
+  )
+  const labelColumnWidth = menuLabelColumnWidth(props.rows, contentWidth)
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
@@ -164,22 +343,22 @@ export function OpenCodeMenu(props: {
           <Text color={theme.colors.muted}>{props.emptyText ?? "No matches"}</Text>
         </Box>
       ) : null}
-      {props.rows.map((row, index) => {
+      {viewport.rows.map(({ row, rowIndex, hasTopMargin }) => {
         if (row.kind === "section") {
           return (
-            <Box key={`${row.title}-${index}`} paddingX={5} marginTop={index === 0 ? 0 : 1}>
+            <Box key={`${row.title}-${rowIndex}`} paddingX={5} marginTop={hasTopMargin ? 1 : 0}>
               <Text bold color={theme.colors.section}>{row.title}</Text>
             </Box>
           )
         }
         const selected = row.itemIndex === props.selectedIndex
-        return <OpenCodeActionLine key={row.item.id} item={row.item} selected={selected} />
+        return <OpenCodeActionLine key={row.item.id} item={row.item} selected={selected} width={contentWidth} labelColumnWidth={labelColumnWidth} />
       })}
       {selectedDetail ? (
         <>
           <Text> </Text>
           <Box paddingX={5}>
-            <Text color={theme.colors.muted} wrap="wrap">{selectedDetail}</Text>
+            <Text color={theme.colors.muted} wrap="truncate">{selectedDetail}</Text>
           </Box>
         </>
       ) : null}
@@ -212,6 +391,14 @@ export function OpenCodePrompt(props: {
   footer?: string[]
 }) {
   const theme = useTuiTheme()
+  const [cursorVisible, setCursorVisible] = useState(true)
+  const displayValue = props.masked ? maskSecret(props.value) : props.value
+
+  useEffect(() => {
+    const timer = setInterval(() => setCursorVisible((visible) => !visible), 550)
+    return () => clearInterval(timer)
+  }, [])
+
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
@@ -224,8 +411,8 @@ export function OpenCodePrompt(props: {
       </Box>
       <Box paddingX={5}>
         <Text>
-          <Text backgroundColor={theme.colors.highlight} color={theme.colors.highlightText}> </Text>
-          <Text wrap="wrap">{props.masked ? maskSecret(props.value) || "_" : props.value || "_"}</Text>
+          <Text wrap="wrap">{displayValue}</Text>
+          <Text backgroundColor={cursorVisible ? theme.colors.highlight : undefined} color={cursorVisible ? theme.colors.highlightText : theme.colors.primary}> </Text>
         </Text>
       </Box>
       {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted}>{props.hint}</Text></Box> : null}
@@ -264,15 +451,19 @@ function diffLineColor(line: string, diffStyle: TuiDiffStyle) {
   return undefined
 }
 
-export function DiffBlock(props: { diff: string; style: TuiDiffStyle }) {
+export function DiffBlock(props: { diff: string; style: TuiDiffStyle; offset?: number; maxLines?: number }) {
   const theme = useTuiTheme()
+  const { stdout } = useStdout()
+  const contentWidth = Math.max(1, terminalContentWidth(stdout.columns) - 10)
   const lines = props.diff ? props.diff.split(/\r?\n/) : ["No changes."]
+  const offset = Math.max(0, Math.min(props.offset ?? 0, Math.max(0, lines.length - 1)))
+  const visibleLines = props.maxLines === undefined ? lines : lines.slice(offset, offset + Math.max(1, props.maxLines))
   return (
     <Box flexDirection="column" paddingX={5}>
-      {lines.map((line, index) => {
+      {visibleLines.map((line, index) => {
         const colorKind = diffLineColor(line, props.style)
         const color = colorKind === "add" ? theme.colors.diffAdd : colorKind === "remove" ? theme.colors.diffRemove : colorKind === "meta" ? theme.colors.diffMeta : undefined
-        return <Text key={`${index}-${line}`} color={color} dimColor={props.style === "compact" && line.startsWith(" ")}>{line || " "}</Text>
+        return <Text key={`${offset + index}-${line}`} color={color} dimColor={props.style === "compact" && line.startsWith(" ")} wrap="truncate">{truncateLine(line || " ", contentWidth)}</Text>
       })}
     </Box>
   )
