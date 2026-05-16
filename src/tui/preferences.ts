@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { parse, type ParseError } from "jsonc-parser"
+import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { defaultTuiLanguage, isTuiLanguage, type TuiLanguage } from "./i18n.js"
 import { isTuiThemeName, type TuiThemeName } from "./theme.js"
 import { defaultTuiKeybinds, resolveTuiKeybinds, type TuiKeybindMap } from "./keybinds.js"
 
@@ -12,6 +13,7 @@ export type TuiPreferences = {
   keybinds: TuiKeybindMap
   diffStyle: TuiDiffStyle
   mouse: boolean
+  language: TuiLanguage
 }
 
 export type TuiPreferencesResult = {
@@ -28,6 +30,7 @@ export const defaultTuiPreferences: TuiPreferences = {
   keybinds: defaultTuiKeybinds,
   diffStyle: "unified",
   mouse: true,
+  language: defaultTuiLanguage,
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,6 +58,13 @@ function resolveMouse(value: unknown, diagnostics: string[]) {
   return defaultTuiPreferences.mouse
 }
 
+function resolveLanguage(value: unknown, diagnostics: string[]): TuiLanguage {
+  if (value === undefined) return defaultTuiPreferences.language
+  if (isTuiLanguage(value)) return value
+  diagnostics.push(`Unknown TUI language "${String(value)}"; using "${defaultTuiPreferences.language}".`)
+  return defaultTuiPreferences.language
+}
+
 export function defaultTuiConfigPath() {
   return path.join(os.homedir(), ".config", "ocfg", "tui.jsonc")
 }
@@ -72,6 +82,7 @@ export function resolveTuiPreferences(value: unknown): TuiPreferencesResult {
       keybinds: resolveTuiKeybinds(value.keybinds),
       diffStyle: resolveDiffStyle(value.diffStyle, diagnostics),
       mouse: resolveMouse(value.mouse, diagnostics),
+      language: resolveLanguage(value.language, diagnostics),
     },
     diagnostics,
   }
@@ -102,4 +113,31 @@ export async function loadTuiPreferences(options: { path?: string } = {}): Promi
       diagnostics: [`Failed to read TUI config at ${configPath}: ${caught instanceof Error ? caught.message : String(caught)}`],
     }
   }
+}
+
+export async function writeTuiLanguagePreference(language: TuiLanguage, options: { path?: string } = {}) {
+  const configPath = options.path ?? process.env.OCFG_TUI_CONFIG ?? defaultTuiConfigPath()
+  let text = "{}\n"
+
+  try {
+    text = await readFile(configPath, "utf8")
+  } catch (caught) {
+    if (!(caught && typeof caught === "object" && "code" in caught && caught.code === "ENOENT")) throw caught
+  }
+  if (!text.trim()) text = "{}\n"
+
+  const parseErrors: ParseError[] = []
+  parse(text, parseErrors, { allowTrailingComma: true })
+  if (parseErrors.length > 0) throw new Error(`Failed to parse TUI config at ${configPath}.`)
+
+  const edits = modify(text, ["language"], language, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  })
+  const nextText = applyEdits(text, edits)
+  await mkdir(path.dirname(configPath), { recursive: true })
+  await writeFile(configPath, nextText.endsWith("\n") ? nextText : `${nextText}\n`, "utf8")
+  return configPath
 }

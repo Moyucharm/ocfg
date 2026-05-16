@@ -3,6 +3,7 @@ import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
 import { collectDefaultModelOptions, type DefaultModelKey, type DefaultModelOption } from "../default-model.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -10,11 +11,6 @@ import type { TuiConfigSelection } from "../types.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "target" | "model"
-
-const targets: Array<{ key: DefaultModelKey; label: string; description: string }> = [
-  { key: "model", label: "主模型", description: "Primary default model" },
-  { key: "small_model", label: "小模型", description: "Small/default lightweight model" },
-]
 
 function currentValue(config: Record<string, unknown>, key: DefaultModelKey) {
   return typeof config[key] === "string" ? config[key] : undefined
@@ -25,6 +21,7 @@ export function DefaultModelScreen(props: {
   onSelect: (key: DefaultModelKey, ref?: string) => void
   onBack: () => void
 }) {
+  const t = useTuiText()
   const [step, setStep] = useState<Step>("target")
   const [selected, setSelected] = useState(0)
   const [targetIndex, setTargetIndex] = useState(0)
@@ -33,11 +30,15 @@ export function DefaultModelScreen(props: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
+  const targets: Array<{ key: DefaultModelKey; label: string; description: string }> = [
+    { key: "model", label: t("defaultModel.main"), description: t("defaultModel.mainDesc") },
+    { key: "small_model", label: t("defaultModel.small"), description: t("defaultModel.smallDesc") },
+  ]
 
   const selectedTarget = targets[targetIndex]!
   const groups: OpenCodeMenuGroup[] = step === "target"
-    ? [{ title: "Setting", items: targets.map((target) => ({ id: target.key, label: target.label, description: target.description, meta: current[target.key] ?? "(empty)" })) }]
-    : [{ title: options.length > 1 ? "Configured" : "Recent", items: options.map((option) => ({ id: option.ref ?? "__empty", label: option.label, meta: option.ref === current[selectedTarget.key] ? "current" : "" })) }]
+    ? [{ title: t("defaultModel.setting"), items: targets.map((target) => ({ id: target.key, label: target.label, description: target.description, meta: current[target.key] ?? t("common.empty") })) }]
+    : [{ title: options.length > 1 ? t("defaultModel.configured") : t("defaultModel.recent"), items: options.map((option) => ({ id: option.ref ?? "__empty", label: option.ref ? option.label : t("common.empty"), description: option.ref ? option.description : t("defaultModel.clear"), meta: option.ref === current[selectedTarget.key] ? t("common.current") : "" })) }]
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -101,8 +102,8 @@ export function DefaultModelScreen(props: {
     }
   }, [props.selection])
 
-  if (loading) return <Text>Loading models...</Text>
-  if (error) return <Text color="red">Failed to load models: {error}</Text>
+  if (loading) return <Text>{t("defaultModel.loading")}</Text>
+  if (error) return <Text color="red">{t("defaultModel.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={step === "target" ? "Select default" : "Select model"} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={step === "model" ? ["Back\tesc", "Select\tenter"] : ["Back\tesc"]} />
+  return <OpenCodeMenu title={step === "target" ? t("defaultModel.title.default") : t("defaultModel.title.model")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={step === "model" ? [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`] : [`${t("common.back")}\tesc`]} />
 }

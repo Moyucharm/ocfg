@@ -1,4 +1,5 @@
 import React, { useState } from "react"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -32,10 +33,17 @@ function booleanValue(model: Record<string, unknown>, key: "reasoning" | "tool_c
   return typeof model[key] === "boolean" ? model[key] : false
 }
 
-function parsePositiveInteger(value: string, label: string) {
+function parsePositiveInteger(value: string, errorMessage: string) {
   const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} must be a positive integer`)
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(errorMessage)
   return parsed
+}
+
+function booleanFieldLabel(field: BooleanField, t: ReturnType<typeof useTuiText>) {
+  if (field === "toolCall") return t("model.field.toolCall")
+  if (field === "reasoning") return t("model.field.reasoning")
+  if (field === "temperature") return t("model.field.temperature")
+  return t("model.field.attachment")
 }
 
 export function ModelEditExistingScreen(props: {
@@ -45,6 +53,7 @@ export function ModelEditExistingScreen(props: {
   onComplete: (draft: ExistingModelEditDraft) => void
   onBack: () => void
 }) {
+  const t = useTuiText()
   const [mode, setMode] = useState<Mode>("menu")
   const [selected, setSelected] = useState(0)
   const [draft, setDraft] = useState<ExistingModelEditDraft>({})
@@ -61,19 +70,19 @@ export function ModelEditExistingScreen(props: {
   }
 
   const menuGroups: OpenCodeMenuGroup[] = [{
-    title: "Model",
+    title: t("model.model"),
     items: [
-      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)" },
-      { id: "context", label: "Context limit", meta: String((draft.context ?? limitValue(props.model, "context")) || "(missing)") },
-      { id: "output", label: "Output limit", meta: String((draft.output ?? limitValue(props.model, "output")) || "(missing)") },
-      { id: "reasoning", label: "Reasoning", meta: String(currentBooleanValue("reasoning")) },
-      { id: "tool-call", label: "Tool call", meta: String(currentBooleanValue("toolCall")) },
-      { id: "temperature", label: "Temperature", meta: String(currentBooleanValue("temperature")) },
-      { id: "attachment", label: "Attachment", meta: String(currentBooleanValue("attachment")) },
-      { id: "review", label: "Review diff" },
+      { id: "name", label: t("provider.displayName"), meta: (draft.name ?? currentName) || t("common.missing") },
+      { id: "context", label: t("model.field.context"), meta: String((draft.context ?? limitValue(props.model, "context")) || t("common.missing")) },
+      { id: "output", label: t("model.field.output"), meta: String((draft.output ?? limitValue(props.model, "output")) || t("common.missing")) },
+      { id: "reasoning", label: t("model.field.reasoning"), meta: t(currentBooleanValue("reasoning") ? "common.true" : "common.false") },
+      { id: "tool-call", label: t("model.field.toolCall"), meta: t(currentBooleanValue("toolCall") ? "common.true" : "common.false") },
+      { id: "temperature", label: t("model.field.temperature"), meta: t(currentBooleanValue("temperature") ? "common.true" : "common.false") },
+      { id: "attachment", label: t("model.field.attachment"), meta: t(currentBooleanValue("attachment") ? "common.true" : "common.false") },
+      { id: "review", label: t("provider.reviewDiff") },
     ],
   }]
-  const booleanGroups: OpenCodeMenuGroup[] = [{ title: booleanField, items: [{ id: "false", label: "false" }, { id: "true", label: "true" }] }]
+  const booleanGroups: OpenCodeMenuGroup[] = [{ title: booleanFieldLabel(booleanField, t), items: [{ id: "false", label: t("common.false") }, { id: "true", label: t("common.true") }] }]
 
   function startField(field: Field) {
     setError(undefined)
@@ -101,8 +110,8 @@ export function ModelEditExistingScreen(props: {
   function savePrompt() {
     try {
       if (mode === "name") setDraft((current) => ({ ...current, name: inputValue.trim() }))
-      if (mode === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.trim(), "context") }))
-      if (mode === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.trim(), "output") }))
+      if (mode === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.trim(), t("model.error.positiveInteger", { label: t("model.field.context") })) }))
+      if (mode === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.trim(), t("model.error.positiveInteger", { label: t("model.field.output") })) }))
       setInputValue("")
       setMode("menu")
     } catch (caught) {
@@ -139,7 +148,7 @@ export function ModelEditExistingScreen(props: {
     const count = rows.filter((row) => row.kind === "item").length
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         if (mode === "boolean") runBooleanIndex(clicked)
@@ -161,16 +170,16 @@ export function ModelEditExistingScreen(props: {
   })
 
   if (mode === "name" || mode === "context" || mode === "output") {
-    return <OpenCodePrompt title={`Edit ${props.modelID}`} label={mode} value={inputValue} error={error} footer={["Save\tenter", "Cancel\tesc"]} />
+    return <OpenCodePrompt title={t("model.title.editId", { id: props.modelID })} label={mode === "name" ? t("provider.displayName") : mode === "context" ? t("model.field.context") : t("model.field.output")} value={inputValue} error={error} footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]} />
   }
 
   return (
     <OpenCodeMenu
-      title={mode === "boolean" ? booleanField : `Edit ${props.modelID}`}
+      title={mode === "boolean" ? booleanFieldLabel(booleanField, t) : t("model.title.editId", { id: props.modelID })}
       query=""
       rows={openCodeMenuRows(mode === "boolean" ? booleanGroups : menuGroups, "")}
       selectedIndex={selected}
-      footer={mode === "boolean" ? ["Select\tenter", "Cancel\tesc"] : ["Open\tenter", "Back\tesc"]}
+      footer={mode === "boolean" ? [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`] : [`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]}
     />
   )
 }

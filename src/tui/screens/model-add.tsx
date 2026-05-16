@@ -6,6 +6,7 @@ import { createProviderDraftFromEndpoint, type GeneratedProviderDraft } from "..
 import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { configuredModelIDs, selectableDetectedModels, splitExistingModelIDs } from "../model-add.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { inferEndpointKindFromProvider, providerApiKeyRef, providerBaseURL, resolveProviderApiKey } from "../provider-metadata.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
@@ -14,11 +15,14 @@ import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt,
 
 type Step = "choose" | "input" | "detecting" | "select" | "review" | "loading"
 
-const reviewActions = ["View diff", "Back"] as const
+const reviewActions = ["view-diff", "back"] as const
 
-function summarizeModel(model: ModelDraft) {
-  const limit = model.limit ? `${model.limit.context}/${model.limit.output}` : "missing limit"
-  return `limit ${limit}, reasoning=${String(model.reasoning ?? false)}, tools=${String(model.tool_call ?? false)}`
+function summarizeModel(model: ModelDraft, t: ReturnType<typeof useTuiText>) {
+  return t("model.summary", {
+    limit: model.limit ? `${model.limit.context}/${model.limit.output}` : t("model.missingLimit"),
+    reasoning: t(model.reasoning ? "common.true" : "common.false"),
+    tools: t(model.tool_call ? "common.true" : "common.false"),
+  })
 }
 
 function parseModelIDs(value: string) {
@@ -31,6 +35,7 @@ export function ModelAddScreen(props: {
   onBack: () => void
   onReviewDiff: (generated: GeneratedProviderDraft) => Promise<void> | void
 }) {
+  const t = useTuiText()
   const endpointKind = inferEndpointKindFromProvider(props.provider)
   const template = getEndpointTemplate(endpointKind)
   const baseURL = providerBaseURL(props.provider)
@@ -49,18 +54,18 @@ export function ModelAddScreen(props: {
   async function resolveModels(modelIDs = parseModelIDs(modelText)) {
     const { newModelIDs, alreadyAdded } = splitExistingModelIDs(modelIDs, existingModelIDs)
     if (newModelIDs.length === 0) {
-      setError(alreadyAdded.length > 0 ? `Already configured: ${alreadyAdded.join(", ")}` : "At least one model ID is required.")
+      setError(alreadyAdded.length > 0 ? t("model.alreadyConfigured", { models: alreadyAdded.join(", ") }) : t("model.atLeastOne"))
       return
     }
     setError(undefined)
-    setMetadataWarnings(alreadyAdded.length > 0 ? [`Skipped already configured models: ${alreadyAdded.join(", ")}`] : [])
+    setMetadataWarnings(alreadyAdded.length > 0 ? [t("model.skippedAlready", { models: alreadyAdded.join(", ") })] : [])
     setStep("loading")
     try {
       let modelsDevData
       try {
         modelsDevData = await loadModelsDev()
       } catch (caught) {
-        setMetadataWarnings([`models.dev unavailable; using built-in templates: ${caught instanceof Error ? caught.message : String(caught)}`])
+        setMetadataWarnings([t("model.modelsDevUnavailable", { message: caught instanceof Error ? caught.message : String(caught) })])
         modelsDevData = {}
       }
       const currentName = typeof props.provider.name === "string" ? props.provider.name : props.providerID
@@ -84,7 +89,7 @@ export function ModelAddScreen(props: {
 
   async function probeModels() {
     if (!baseURL) {
-      setError("Base URL is required for model detection. Use manual input instead.")
+      setError(t("model.baseRequired"))
       setStep("input")
       return
     }
@@ -93,7 +98,7 @@ export function ModelAddScreen(props: {
     try {
       const apiKey = await resolveProviderApiKey(props.provider)
       if (!apiKey) {
-        setError("API key is unavailable for model detection. Use manual input instead.")
+        setError(t("model.apiUnavailable"))
         setStep("input")
         return
       }
@@ -105,7 +110,7 @@ export function ModelAddScreen(props: {
       setSelectedModels(new Set(selectableModels))
       setSelected(0)
       setQuery("")
-      setMetadataWarnings(selectableModels.length === result.models.length ? [] : ["Already configured models are shown for reference."])
+      setMetadataWarnings(selectableModels.length === result.models.length ? [] : [t("model.alreadyShown")])
       setStep("select")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -142,11 +147,11 @@ export function ModelAddScreen(props: {
 
   function menuGroups(): OpenCodeMenuGroup[] {
     if (step === "choose") {
-      return [{ title: "Options", items: [{ id: "auto", label: "Auto detect models" }, { id: "manual", label: "Manual input" }] }]
+      return [{ title: t("model.options"), items: [{ id: "auto", label: t("model.autoDetect") }, { id: "manual", label: t("model.manualInput") }] }]
     }
     if (step === "select") {
       return [{
-        title: "Recent",
+        title: t("model.recent"),
         items: detectedModels.map((model) => {
           const alreadyAdded = existingModelIDs.has(model.id)
           const isSelected = selectedModels.has(model.id) && !alreadyAdded
@@ -155,7 +160,7 @@ export function ModelAddScreen(props: {
             label: model.id,
             description: model.name,
             marker: isSelected ? "x" : " ",
-            meta: alreadyAdded ? "已添加" : undefined,
+            meta: alreadyAdded ? t("model.alreadyAdded") : undefined,
             backgroundColor: alreadyAdded ? "black" : undefined,
             disabled: alreadyAdded,
             selected: isSelected,
@@ -163,8 +168,8 @@ export function ModelAddScreen(props: {
         }),
       }]
     }
-    const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model), disabled: true })) : []
-    return [{ title: "Resolved", items: modelItems }, { title: "Actions", items: reviewActions.map((action) => ({ id: action, label: action })) }]
+    const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model, t), disabled: true })) : []
+    return [{ title: t("model.resolved"), items: modelItems }, { title: t("model.actions"), items: reviewActions.map((action) => ({ id: action, label: action === "view-diff" ? t("model.viewDiff") : t("common.back") })) }]
   }
 
   function runSelected(index = selected) {
@@ -180,8 +185,8 @@ export function ModelAddScreen(props: {
     if (step === "review" && generated) {
       const modelCount = Object.keys(generated.provider.models).length
       const action = reviewActions[index - modelCount]
-      if (action === "View diff") void props.onReviewDiff(generated)
-      if (action === "Back") setStep(detectedModels.length > 0 ? "select" : "input")
+      if (action === "view-diff") void props.onReviewDiff(generated)
+      if (action === "back") setStep(detectedModels.length > 0 ? "select" : "input")
     }
   }
 
@@ -270,18 +275,18 @@ export function ModelAddScreen(props: {
     }
   })
 
-  if (step === "input") return <OpenCodePrompt title="Add models" label="Model IDs" value={modelText} error={error} hint="Separate multiple model IDs with commas." footer={["Continue\tenter", "Cancel\tesc"]} />
-  if (step === "detecting") return <Text>Detecting models from {baseURL}/models...</Text>
-  if (step === "loading") return <Text>Resolving model capabilities...</Text>
+  if (step === "input") return <OpenCodePrompt title={t("model.title.add")} label={t("model.ids")} value={modelText} error={error} hint={t("model.inputHint")} footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]} />
+  if (step === "detecting") return <Text>{t("model.detecting", { baseURL: baseURL ?? "" })}</Text>
+  if (step === "loading") return <Text>{t("model.resolving")}</Text>
 
   return (
     <OpenCodeMenu
-      title={step === "choose" ? "Add models" : step === "select" ? "Select models" : "Resolved models"}
+      title={step === "choose" ? t("model.title.add") : step === "select" ? t("model.title.select") : t("model.title.resolved")}
       query={menuQuery()}
       rows={rowsForStep()}
       selectedIndex={selected}
       showSearch={step === "select"}
-      footer={step === "select" ? ["Toggle\tspace", "All\tctrl+a", "Manual\tctrl+m", "Retry\tctrl+r", "Continue\tenter"] : step === "review" ? ["Diff\td", "Back\tb"] : ["Select\tenter", "Cancel\tesc"]}
+      footer={step === "select" ? [`${t("common.toggle")}\tspace`, `${t("common.all")}\tctrl+a`, `${t("common.manual")}\tctrl+m`, `${t("common.retry")}\tctrl+r`, `${t("common.continue")}\tenter`] : step === "review" ? [`${t("common.diff")}\td`, `${t("common.back")}\tb`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]}
       emptyText={metadataWarnings[0] ?? error}
     />
   )

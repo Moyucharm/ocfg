@@ -1,6 +1,7 @@
-import React, { useState } from "react"
-import { Box, Text } from "ink"
+import React, { useEffect, useState } from "react"
+import { Box, Text, useStdout } from "ink"
 import { useTuiInput } from "../input.js"
+import { useTuiText } from "../i18n.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent, type TuiMouseEvent } from "../mouse.js"
 import type { TuiDiffStyle } from "../preferences.js"
@@ -9,15 +10,15 @@ import type { DiffReviewState } from "../types.js"
 import { DiffBlock, formatOpenCodeTitle, OpenCodeActionLine, OpenCodeNotice, type OpenCodeMenuItem } from "../ui.js"
 
 const actions = [
-  { id: "confirm", label: "Confirm" },
-  { id: "cancel", label: "Cancel", danger: true },
-] satisfies OpenCodeMenuItem[]
+  { id: "confirm", danger: false },
+  { id: "cancel", danger: true },
+] as const
 
 function diffLineCount(diff: string) {
   return diff ? diff.split(/\r?\n/).length : 1
 }
 
-function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, writing: boolean) {
+function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, writing: boolean, renderedDiffLineCount: number) {
   if (event.kind !== "press" || event.button !== "left") return undefined
   let rowsBeforeActions = 0
   rowsBeforeActions += 1 // title
@@ -33,7 +34,7 @@ function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, wri
     rowsBeforeActions += 1 // spacer
   }
   rowsBeforeActions += 1 // Changes section
-  rowsBeforeActions += diffLineCount(review.diff)
+  rowsBeforeActions += renderedDiffLineCount
   rowsBeforeActions += 1 // spacer
   rowsBeforeActions += 1 // Actions section
 
@@ -97,7 +98,26 @@ export function DiffReviewScreen(props: {
 }) {
   const [selected, setSelected] = useState(0)
   const [writing, setWriting] = useState(false)
+  const [diffOffset, setDiffOffset] = useState(0)
+  const t = useTuiText()
+  const { stdout } = useStdout()
   const keybinds = useTuiKeybinds()
+  const diffLines = diffLineCount(props.review.diff)
+  const diagnosticsRows = props.review.diagnostics && props.review.diagnostics.length > 0 ? props.review.diagnostics.length + 2 : 0
+  const staticRows = 12 + (props.review.secretFile ? 1 : 0) + (writing ? 1 : 0) + diagnosticsRows
+  const maxDiffLines = Math.max(1, (stdout.rows ?? 24) - staticRows)
+  const maxDiffOffset = Math.max(0, diffLines - maxDiffLines)
+  const renderedDiffOffset = Math.min(diffOffset, maxDiffOffset)
+  const renderedDiffLineCount = Math.min(diffLines, maxDiffLines)
+  const actionItems: OpenCodeMenuItem[] = actions.map((action) => ({
+    id: action.id,
+    label: action.id === "confirm" ? t("diff.confirm") : t("diff.cancel"),
+    danger: action.danger,
+  }))
+
+  useEffect(() => {
+    setDiffOffset(0)
+  }, [props.review.diff, props.review.targetPath])
 
   function selectPrevious() {
     setSelected((current) => (current === 0 ? actions.length - 1 : current - 1))
@@ -116,6 +136,10 @@ export function DiffReviewScreen(props: {
     }
   }
 
+  function scrollDiff(delta: number) {
+    setDiffOffset((current) => Math.max(0, Math.min(maxDiffOffset, current + delta)))
+  }
+
   useTuiInput((input, key) => {
     const mouseEvent = parseTuiMouseEvent(input)
     if (props.review.completed || props.review.error) {
@@ -126,9 +150,9 @@ export function DiffReviewScreen(props: {
 
     if (writing) return
     if (mouseEvent) {
-      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-up") selectPrevious()
-      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-down") selectNext()
-      const clicked = actionIndexFromMouse(mouseEvent, props.review, writing)
+      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-up") scrollDiff(-3)
+      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-down") scrollDiff(3)
+      const clicked = actionIndexFromMouse(mouseEvent, props.review, writing, renderedDiffLineCount)
       if (clicked !== undefined) {
         setSelected(clicked)
         performAction(clicked)
@@ -136,27 +160,35 @@ export function DiffReviewScreen(props: {
       return
     }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onCancel()
-    if (matchesKeybind("left", input, key, keybinds) || matchesKeybind("up", input, key, keybinds)) selectPrevious()
-    if (matchesKeybind("right", input, key, keybinds) || matchesKeybind("down", input, key, keybinds)) selectNext()
+    if (matchesKeybind("up", input, key, keybinds)) {
+      if (maxDiffOffset > 0) scrollDiff(-1)
+      else selectPrevious()
+    }
+    if (matchesKeybind("down", input, key, keybinds)) {
+      if (maxDiffOffset > 0) scrollDiff(1)
+      else selectNext()
+    }
+    if (matchesKeybind("left", input, key, keybinds)) selectPrevious()
+    if (matchesKeybind("right", input, key, keybinds)) selectNext()
     if (matchesKeybind("confirm", input, key, keybinds)) performAction(selected)
   })
 
   if (props.review.completed) {
     return (
       <Box flexDirection="column">
-        <Header title="Config written" />
+        <Header title={t("diff.configWritten")} />
         <Text> </Text>
-        <Section title="Result" />
-        <FieldRow label="Target" value={props.review.result?.targetPath ?? props.review.targetPath} />
-        {props.review.result?.backupPath ? <FieldRow label="Backup" value={props.review.result.backupPath} /> : null}
-        {props.review.secretFilePath ? <FieldRow label="API key file" value={props.review.secretFilePath} /> : null}
+        <Section title={t("diff.result")} />
+        <FieldRow label={t("diff.target")} value={props.review.result?.targetPath ?? props.review.targetPath} />
+        {props.review.result?.backupPath ? <FieldRow label={t("diff.backup")} value={props.review.result.backupPath} /> : null}
+        {props.review.secretFilePath ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFilePath} /> : null}
         <Text> </Text>
-        <OpenCodeNotice tone="success">Restart OpenCode if the running session does not pick up provider changes.</OpenCodeNotice>
+        <OpenCodeNotice tone="success">{t("diff.restart")}</OpenCodeNotice>
         <Text> </Text>
-        <Section title="Actions" />
-        <OpenCodeActionLine item={{ id: "close", label: "Close" }} selected />
+        <Section title={t("diff.actions")} />
+        <OpenCodeActionLine item={{ id: "close", label: t("common.close") }} selected />
         <Text> </Text>
-        <Footer items={["Close\tenter", "Back\tb/q"]} />
+        <Footer items={[`${t("common.close")}\tenter`, `${t("common.back")}\tb/q`]} />
       </Box>
     )
   }
@@ -164,46 +196,46 @@ export function DiffReviewScreen(props: {
   if (props.review.error) {
     return (
       <Box flexDirection="column">
-        <Header title="Write failed" />
+        <Header title={t("diff.writeFailed")} />
         <Text> </Text>
-        <Section title="Error" />
-        <FieldRow label="Message" value={props.review.error} />
+        <Section title={t("diff.error")} />
+        <FieldRow label={t("diff.message")} value={props.review.error} />
         <Text> </Text>
-        <Section title="Actions" />
-        <OpenCodeActionLine item={{ id: "close", label: "Close" }} selected />
+        <Section title={t("diff.actions")} />
+        <OpenCodeActionLine item={{ id: "close", label: t("common.close") }} selected />
         <Text> </Text>
-        <Footer items={["Close\tenter", "Back\tb/q"]} />
+        <Footer items={[`${t("common.close")}\tenter`, `${t("common.back")}\tb/q`]} />
       </Box>
     )
   }
 
   return (
     <Box flexDirection="column">
-      <Header title="Diff review" />
+      <Header title={t("diff.review")} />
       <Text> </Text>
-      <Section title="Target" />
-      <FieldRow label="Path" value={props.review.targetPath} />
-      {props.review.secretFile ? <FieldRow label="API key file" value={props.review.secretFile.path} dim /> : null}
+      <Section title={t("diff.target")} />
+      <FieldRow label={t("diff.path")} value={props.review.targetPath} />
+      {props.review.secretFile ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFile.path} dim /> : null}
       <Text> </Text>
-      {writing ? <OpenCodeNotice>Writing...</OpenCodeNotice> : null}
+      {writing ? <OpenCodeNotice>{t("diff.writing")}</OpenCodeNotice> : null}
       {props.review.diagnostics && props.review.diagnostics.length > 0 ? (
         <>
-          <Section title="Diagnostics" />
+          <Section title={t("diff.diagnostics")} />
           {props.review.diagnostics.map((diagnostic, index) => (
             <FieldRow key={`${diagnostic.message}-${index}`} label={diagnostic.severity} value={diagnostic.message} />
           ))}
           <Text> </Text>
         </>
       ) : null}
-      <Section title="Changes" />
-      <DiffBlock diff={props.review.diff} style={props.diffStyle} />
+      <Section title={maxDiffOffset > 0 ? t("diff.changesRange", { start: renderedDiffOffset + 1, end: Math.min(renderedDiffOffset + maxDiffLines, diffLines), total: diffLines }) : t("diff.changes")} />
+      <DiffBlock diff={props.review.diff} style={props.diffStyle} offset={renderedDiffOffset} maxLines={maxDiffLines} />
       <Text> </Text>
-      <Section title="Actions" />
-      {actions.map((action, index) => (
+      <Section title={t("diff.actions")} />
+      {actionItems.map((action, index) => (
         <OpenCodeActionLine key={action.id} item={action} selected={index === selected} />
       ))}
       <Text> </Text>
-      <Footer items={["Select\tenter", "Cancel\tesc"]} />
+      <Footer items={maxDiffOffset > 0 ? [`${t("common.select")}\tenter`, `${t("common.scroll")}\tup/down`, `${t("common.cancel")}\tesc`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]} />
     </Box>
   )
 }

@@ -1,31 +1,33 @@
 import React, { useState } from "react"
 import { parseTuiMouseEvent } from "../mouse.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useTuiText } from "../i18n.js"
 import type { TuiAction, TuiConfigSelection } from "../types.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 import { useTuiInput } from "../input.js"
 
-const groups: OpenCodeMenuGroup[] = [
-  {
-    title: "Commands",
-    items: [
-      { id: "edit-provider", label: "Edit provider" },
-      { id: "add-provider", label: "Connect provider" },
-      { id: "doctor", label: "Doctor" },
-      { id: "set-default-model", label: "Select model" },
-      { id: "switch-config", label: "Switch config target" },
-      { id: "delete-provider", label: "Delete provider", danger: true },
-    ],
-  },
-]
-
-function itemCount() {
+function itemCount(groups: OpenCodeMenuGroup[]) {
   return openCodeMenuRows(groups, "").filter((row) => row.kind === "item").length
 }
 
 export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (action: TuiAction) => void; onQuit: () => void }) {
+  const t = useTuiText()
   const [selected, setSelected] = useState(0)
   const keybinds = useTuiKeybinds()
+  const groups: OpenCodeMenuGroup[] = [
+    {
+      title: t("home.group.commands"),
+      items: [
+        { id: "edit-provider", label: t("home.editProvider") },
+        { id: "add-provider", label: t("home.connectProvider") },
+        { id: "doctor", label: t("home.doctor") },
+        { id: "set-default-model", label: t("home.setDefaultModel") },
+        { id: "switch-config", label: t("home.switchConfig") },
+        { id: "switch-language", label: t("home.switchLanguage") },
+        { id: "delete-provider", label: t("home.deleteProvider"), danger: true },
+      ],
+    },
+  ]
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -35,13 +37,13 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
   useTuiInput((input, key) => {
     const mouse = parseTuiMouseEvent(input)
     const rows = openCodeMenuRows(groups, "")
-    const count = itemCount()
+    const count = itemCount(groups)
     if (mouse) {
       if (mouse.kind === "wheel") {
         setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
         return
       }
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)
@@ -56,11 +58,11 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
 
   return (
     <OpenCodeMenu
-      title="Commands"
+      title={t("home.title")}
       query=""
       rows={openCodeMenuRows(groups, "")}
       selectedIndex={selected}
-      footer={["Select\tenter", "Exit\tq"]}
+      footer={[`${t("common.select")}\tenter`, `${t("common.exit")}\tq`]}
     />
   )
 }

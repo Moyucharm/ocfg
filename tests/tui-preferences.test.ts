@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest"
-import { defaultTuiPreferences, resolveTuiPreferences } from "../src/tui/preferences.js"
+import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { parse } from "jsonc-parser"
+import { defaultTuiPreferences, resolveTuiPreferences, writeTuiLanguagePreference } from "../src/tui/preferences.js"
 
 describe("TUI preferences", () => {
   test("returns defaults for missing config", () => {
@@ -9,27 +13,59 @@ describe("TUI preferences", () => {
     expect(result.diagnostics).toEqual([])
   })
 
-  test("accepts theme, diff style, mouse, and keybind overrides", () => {
+  test("accepts theme, diff style, mouse, language, and keybind overrides", () => {
     const result = resolveTuiPreferences({
       theme: "system",
       diffStyle: "compact",
       mouse: false,
+      language: "zh-CN",
       keybinds: { quit: "ctrl+k" },
     })
 
     expect(result.preferences.theme).toBe("system")
     expect(result.preferences.diffStyle).toBe("compact")
     expect(result.preferences.mouse).toBe(false)
+    expect(result.preferences.language).toBe("zh-CN")
     expect(result.preferences.keybinds.quit).toEqual(["ctrl+k"])
     expect(result.diagnostics).toEqual([])
   })
 
-  test("reports invalid theme, diff style, and mouse while keeping safe defaults", () => {
-    const result = resolveTuiPreferences({ theme: "neon", diffStyle: "side-by-side", mouse: "yes" })
+  test("reports invalid theme, diff style, mouse, and language while keeping safe defaults", () => {
+    const result = resolveTuiPreferences({ theme: "neon", diffStyle: "side-by-side", mouse: "yes", language: "fr" })
 
     expect(result.preferences.theme).toBe(defaultTuiPreferences.theme)
     expect(result.preferences.diffStyle).toBe(defaultTuiPreferences.diffStyle)
     expect(result.preferences.mouse).toBe(defaultTuiPreferences.mouse)
-    expect(result.diagnostics).toHaveLength(3)
+    expect(result.preferences.language).toBe(defaultTuiPreferences.language)
+    expect(result.diagnostics).toHaveLength(4)
+  })
+
+  test("creates a TUI config file when saving language", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-tui-pref-"))
+    const filePath = path.join(dir, "nested", "tui.jsonc")
+
+    await writeTuiLanguagePreference("zh-CN", { path: filePath })
+
+    expect(parse(await readFile(filePath, "utf8")).language).toBe("zh-CN")
+  })
+
+  test("updates language while preserving existing JSONC fields", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-tui-pref-"))
+    const filePath = path.join(dir, "tui.jsonc")
+    await writeFile(filePath, `{
+  // keep theme
+  "theme": "system",
+  "mouse": false
+}
+`, "utf8")
+
+    await writeTuiLanguagePreference("zh-CN", { path: filePath })
+
+    const text = await readFile(filePath, "utf8")
+    const parsed = parse(text)
+    expect(text).toContain("// keep theme")
+    expect(parsed.theme).toBe("system")
+    expect(parsed.mouse).toBe(false)
+    expect(parsed.language).toBe("zh-CN")
   })
 })

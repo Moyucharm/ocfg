@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react"
 import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -19,6 +20,7 @@ export function ProviderListScreen(props: {
   onSelectProvider?: (providerID: string) => void
   onBack: () => void
 }) {
+  const t = useTuiText()
   const [providers, setProviders] = useState<Array<{ id: string; name?: string; modelCount: number }>>([])
   const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -27,14 +29,14 @@ export function ProviderListScreen(props: {
   const keybinds = useTuiKeybinds()
 
   const groups: OpenCodeMenuGroup[] = [{
-    title: "Providers",
+    title: t("provider.providers"),
     items: [
-      ...(mode === "add" ? [{ id: "__add", label: "Connect provider" }] : []),
+      ...(mode === "add" ? [{ id: "__add", label: t("provider.title.connect") }] : []),
       ...providers.map((provider) => ({
         id: provider.id,
         label: provider.id,
         description: provider.name,
-        meta: `${provider.modelCount} models`,
+        meta: t("provider.count", { count: provider.modelCount }),
         danger: mode === "delete",
       })),
     ],
@@ -53,7 +55,7 @@ export function ProviderListScreen(props: {
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)
@@ -98,9 +100,9 @@ export function ProviderListScreen(props: {
     }
   }, [props.selection])
 
-  if (loading) return <Text>Loading providers...</Text>
-  if (error) return <Text color="red">Failed to load providers: {error}</Text>
+  if (loading) return <Text>{t("provider.loading")}</Text>
+  if (error) return <Text color="red">{t("provider.failed", { message: error })}</Text>
 
-  const title = mode === "edit" ? "Edit provider" : mode === "delete" ? "Delete provider" : "Connect provider"
-  return <OpenCodeMenu title={title} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={["Back\tesc", "Select\tenter"]} />
+  const title = mode === "edit" ? t("provider.title.edit") : mode === "delete" ? t("provider.title.delete") : t("provider.title.connect")
+  return <OpenCodeMenu title={title} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

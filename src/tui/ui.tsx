@@ -1,5 +1,6 @@
 import React, { useEffect, useState, type ReactNode } from "react"
 import { Box, Text, useStdout } from "ink"
+import { useTuiText } from "./i18n.js"
 import type { TuiDiffStyle } from "./preferences.js"
 import { useTuiTheme } from "./theme.js"
 import type { TuiMouseEvent } from "./mouse.js"
@@ -286,7 +287,6 @@ export function OpenCodeFrame(props: { children: ReactNode }) {
 export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: boolean; width?: number; labelColumnWidth?: number }) {
   const theme = useTuiTheme()
   const backgroundColor = props.selected ? theme.colors.highlight : props.item.selected ? theme.colors.selected : props.item.backgroundColor
-  const selectedText = props.selected || props.item.selected
   return (
     <Text
       wrap="truncate"
@@ -309,6 +309,7 @@ export function OpenCodeMenu(props: {
   emptyText?: string
 }) {
   const theme = useTuiTheme()
+  const t = useTuiText()
   const { stdout } = useStdout()
   const contentWidth = terminalContentWidth(stdout.columns)
   const showSearch = props.showSearch === true
@@ -331,8 +332,8 @@ export function OpenCodeMenu(props: {
         <>
           <Box paddingX={5}>
             <Text>
-              <Text backgroundColor={theme.colors.highlight} color={theme.colors.highlightText}>{props.query ? props.query[0] : "S"}</Text>
-              <Text color={props.query ? theme.colors.primary : theme.colors.muted}>{props.query ? props.query.slice(1) : "earch"}</Text>
+              <Text backgroundColor={theme.colors.highlight} color={theme.colors.highlightText}>{props.query ? props.query[0] : t("ui.search")[0]}</Text>
+              <Text color={props.query ? theme.colors.primary : theme.colors.muted}>{props.query ? props.query.slice(1) : t("ui.search").slice(1)}</Text>
             </Text>
           </Box>
           <Text> </Text>
@@ -340,7 +341,7 @@ export function OpenCodeMenu(props: {
       ) : null}
       {props.rows.length === 0 ? (
         <Box paddingX={5}>
-          <Text color={theme.colors.muted}>{props.emptyText ?? "No matches"}</Text>
+          <Text color={theme.colors.muted}>{props.emptyText ?? t("ui.noMatches")}</Text>
         </Box>
       ) : null}
       {viewport.rows.map(({ row, rowIndex, hasTopMargin }) => {
@@ -391,6 +392,7 @@ export function OpenCodePrompt(props: {
   footer?: string[]
 }) {
   const theme = useTuiTheme()
+  const t = useTuiText()
   const [cursorVisible, setCursorVisible] = useState(true)
   const displayValue = props.masked ? maskSecret(props.value) : props.value
 
@@ -419,7 +421,7 @@ export function OpenCodePrompt(props: {
       {props.error ? <Box paddingX={5}><Text color={theme.colors.error}>{props.error}</Text></Box> : null}
       <Text> </Text>
       <Box paddingX={5} gap={3}>
-        {(props.footer ?? ["Save\tenter", "Cancel\tesc"]).map((item, index) => {
+        {(props.footer ?? [`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]).map((item, index) => {
           const [label, shortcut] = item.split("\t")
           return (
             <Text key={`${item}-${index}`} bold>
@@ -453,9 +455,10 @@ function diffLineColor(line: string, diffStyle: TuiDiffStyle) {
 
 export function DiffBlock(props: { diff: string; style: TuiDiffStyle; offset?: number; maxLines?: number }) {
   const theme = useTuiTheme()
+  const t = useTuiText()
   const { stdout } = useStdout()
   const contentWidth = Math.max(1, terminalContentWidth(stdout.columns) - 10)
-  const lines = props.diff ? props.diff.split(/\r?\n/) : ["No changes."]
+  const lines = props.diff ? props.diff.split(/\r?\n/) : [t("diff.noChanges")]
   const offset = Math.max(0, Math.min(props.offset ?? 0, Math.max(0, lines.length - 1)))
   const visibleLines = props.maxLines === undefined ? lines : lines.slice(offset, offset + Math.max(1, props.maxLines))
   return (

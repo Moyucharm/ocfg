@@ -21,13 +21,15 @@ import { ModelEditScreen } from "./screens/model-edit.js"
 import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
+import { LanguageScreen } from "./screens/language.js"
+import { TuiI18nProvider, translate, type TuiLanguage } from "./i18n.js"
 import { useTuiInput } from "./input.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import { TuiKeybindProvider } from "./keybinds.js"
 import { useMouseCapture } from "./mouse.js"
-import { defaultTuiPreferences, loadTuiPreferences } from "./preferences.js"
+import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference } from "./preferences.js"
 import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeFrame, OpenCodeNotice } from "./ui.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
@@ -44,6 +46,7 @@ export function App() {
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
   const [message, setMessage] = useState<string>()
   const [preferenceWarning, setPreferenceWarning] = useState<string>()
+  const [preferencePath, setPreferencePath] = useState<string>()
   const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
   const [providerListMode, setProviderListMode] = useState<ProviderListMode>("add")
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
@@ -52,7 +55,7 @@ export function App() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
   const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
-    targetPath: "No target selected",
+    targetPath: translate(defaultTuiPreferences.language, "diff.noTargetSelected"),
     diff: createConfigDiff("", ""),
   })
 
@@ -71,6 +74,7 @@ export function App() {
     let active = true
     loadTuiPreferences().then((result) => {
       if (!active) return
+      setPreferencePath(result.path)
       setTuiPreferences(result.preferences)
       setPreferenceWarning(result.diagnostics.length > 0 ? result.diagnostics.join(" ") : undefined)
     })
@@ -89,6 +93,7 @@ export function App() {
     setMessage(undefined)
     if (action === "doctor") navigate("doctor")
     if (action === "switch-config") navigate("select-config")
+    if (action === "switch-language") navigate("language")
     if (action === "add-provider") {
       setProviderListMode("add")
       navigate("provider-list")
@@ -102,6 +107,20 @@ export function App() {
       navigate("provider-list")
     }
     if (action === "set-default-model") navigate("default-model")
+  }
+
+  async function selectLanguage(language: TuiLanguage) {
+    setMessage(undefined)
+    setTuiPreferences((current) => ({ ...current, language }))
+    try {
+      await writeTuiLanguagePreference(language, preferencePath ? { path: preferencePath } : {})
+      setPreferenceWarning(undefined)
+      setMessage(translate(language, "language.saved"))
+    } catch (caught) {
+      setPreferenceWarning(translate(language, "language.saveFailed", { message: caught instanceof Error ? caught.message : String(caught) }))
+    } finally {
+      goBack()
+    }
   }
 
   function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute) {
@@ -162,7 +181,7 @@ export function App() {
   }
 
   async function commitPreparedWrite(review: DiffReviewState): Promise<DiffReviewState> {
-    if (!review.document || !review.nextConfig || !review.nextText) return { ...review, error: "No pending write is available." }
+    if (!review.document || !review.nextConfig || !review.nextText) return { ...review, error: translate(tuiPreferences.language, "diff.noPendingWrite") }
     const validation = await validateConfig(review.nextConfig, { relaxModelEnum: true })
     if (validation.diagnostics.length > 0) {
       return { ...review, diagnostics: validation.diagnostics, error: validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
@@ -199,7 +218,7 @@ export function App() {
       setDiffReturnRoute("home")
       navigate("diff-review")
     } catch (caught) {
-      setDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
+      setDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
       setDiffReturnRoute("home")
       navigate("diff-review")
     }
@@ -234,7 +253,7 @@ export function App() {
         secretFile: draft.apiKeyValue ? { path: defaultSecretFilePath(providerID), value: draft.apiKeyValue } : undefined,
       }, "provider-edit-existing")
     } catch (caught) {
-      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "provider-edit-existing")
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "provider-edit-existing")
     }
   }
 
@@ -251,7 +270,7 @@ export function App() {
       setExistingModelEdit({ providerID, modelID, model })
       navigate("model-edit-existing")
     } catch (caught) {
-      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
     }
   }
 
@@ -279,7 +298,7 @@ export function App() {
         nextText,
       }, "model-list")
     } catch (caught) {
-      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
     }
   }
 
@@ -302,7 +321,7 @@ export function App() {
         nextText,
       }, "model-list")
     } catch (caught) {
-      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "model-list")
     }
   }
 
@@ -343,7 +362,7 @@ export function App() {
     if (!deleteTarget) return
     const expectedToken = deleteTarget.kind === "provider" ? `delete:${deleteTarget.providerID}` : `delete:${deleteTarget.providerID}/${deleteTarget.modelID}`
     if (deleteTarget.references.length > 0 && token !== expectedToken) {
-      setDeleteTarget({ ...deleteTarget, error: `Confirmation token must be exactly "${expectedToken}"` })
+      setDeleteTarget({ ...deleteTarget, error: translate(tuiPreferences.language, "delete.error.confirmToken", { token: expectedToken }) })
       return
     }
 
@@ -393,7 +412,7 @@ export function App() {
         nextText,
       }, "default-model")
     } catch (caught) {
-      openDiffReview({ targetPath: "No target selected", diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "default-model")
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "default-model")
     }
   }
 
@@ -403,11 +422,12 @@ export function App() {
 
   return (
     <TuiThemeProvider themeName={tuiPreferences.theme}>
-      <TuiKeybindProvider keybinds={tuiPreferences.keybinds}>
-        <OpenCodeFrame>
-          <Box flexDirection="column">
-            {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
-            {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
+      <TuiI18nProvider language={tuiPreferences.language}>
+        <TuiKeybindProvider keybinds={tuiPreferences.keybinds}>
+          <OpenCodeFrame>
+            <Box flexDirection="column">
+              {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
+              {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
 
             {route === "home" ? <HomeScreen selection={config} onAction={handleHomeAction} onQuit={exit} /> : null}
             {route === "select-config" ? (
@@ -421,6 +441,7 @@ export function App() {
               />
             ) : null}
             {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
+            {route === "language" ? <LanguageScreen currentLanguage={tuiPreferences.language} onSelect={(language) => void selectLanguage(language)} onBack={() => goBack()} /> : null}
             {route === "provider-list" ? (
               <ProviderListScreen
                 selection={config}
@@ -501,9 +522,10 @@ export function App() {
                 onConfirm={confirmWrite}
               />
             ) : null}
-          </Box>
-        </OpenCodeFrame>
-      </TuiKeybindProvider>
+            </Box>
+          </OpenCodeFrame>
+        </TuiKeybindProvider>
+      </TuiI18nProvider>
     </TuiThemeProvider>
   )
 }

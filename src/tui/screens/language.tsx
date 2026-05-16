@@ -1,36 +1,37 @@
 import React, { useState } from "react"
-import { locateConfig } from "../../core/config-locator.js"
-import type { ConfigScope } from "../../core/types.js"
+import type { TuiLanguage } from "../i18n.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
-import type { TuiConfigSelection } from "../types.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
-const scopes: ConfigScope[] = ["global", "project"]
+const languages: Array<{ id: TuiLanguage; labelKey: "language.english" | "language.chinese" }> = [
+  { id: "en", labelKey: "language.english" },
+  { id: "zh-CN", labelKey: "language.chinese" },
+]
 
-export function SelectConfigScreen(props: {
-  selection: TuiConfigSelection
-  onSelect: (selection: TuiConfigSelection) => void
+export function LanguageScreen(props: {
+  currentLanguage: TuiLanguage
+  onSelect: (language: TuiLanguage) => void
   onBack: () => void
 }) {
   const t = useTuiText()
-  const [selected, setSelected] = useState(() => Math.max(0, scopes.indexOf(props.selection.scope)))
+  const [selected, setSelected] = useState(() => Math.max(0, languages.findIndex((language) => language.id === props.currentLanguage)))
   const keybinds = useTuiKeybinds()
   const groups: OpenCodeMenuGroup[] = [{
-    title: t("config.group"),
-    items: scopes.map((scope) => {
-      const target = locateConfig({ scope })
-      return { id: scope, label: t(scope === "global" ? "config.global" : "config.project"), description: target.path, meta: target.exists ? "" : t("common.missing") }
-    }),
+    title: t("language.group"),
+    items: languages.map((language) => ({
+      id: language.id,
+      label: t(language.labelKey),
+      meta: language.id === props.currentLanguage ? t("common.current") : "",
+    })),
   }]
 
   function selectIndex(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
-    const scope = item.item.id as ConfigScope
-    props.onSelect({ scope, target: locateConfig({ scope }) })
+    props.onSelect(item.item.id as TuiLanguage)
   }
 
   useTuiInput((input, key) => {
@@ -51,5 +52,5 @@ export function SelectConfigScreen(props: {
     if (matchesKeybind("confirm", input, key, keybinds)) selectIndex()
   })
 
-  return <OpenCodeMenu title={t("config.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
+  return <OpenCodeMenu title={t("language.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

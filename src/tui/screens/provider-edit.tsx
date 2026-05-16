@@ -3,6 +3,7 @@ import { channelTypeOptions } from "../../core/channel-types.js"
 import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -22,6 +23,7 @@ function appendInput(value: string, input: string) {
 }
 
 export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraft) => void; onBack: () => void }) {
+  const t = useTuiText()
   const [step, setStep] = useState<Step>("endpoint")
   const [selected, setSelected] = useState(0)
   const [query, setQuery] = useState("")
@@ -39,8 +41,8 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const endpointTemplate = getEndpointTemplate(endpointKind)
 
   const selectGroups: OpenCodeMenuGroup[] = step === "endpoint"
-    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
-    : [{ title: "setCacheKey", items: cacheOptions.map((value) => ({ id: String(value), label: String(value) })) }]
+    ? [{ title: t("provider.channelType"), items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
+    : [{ title: t("provider.cacheKey"), items: cacheOptions.map((value) => ({ id: String(value), label: t(value ? "common.true" : "common.false") })) }]
 
   function finish(setCacheKey: boolean) {
     const apiKeyFilePath = defaultSecretFilePath(providerID.trim())
@@ -68,7 +70,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   function savePrompt() {
     setError(undefined)
     if (step === "provider-id") {
-      if (!inputValue.trim()) return setError("Provider ID is required.")
+      if (!inputValue.trim()) return setError(t("provider.error.providerIdRequired"))
       setProviderID(inputValue.trim())
       openPrompt("name")
       return
@@ -84,7 +86,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       return
     }
     if (step === "api-key") {
-      if (!inputValue.trim()) return setError("API key is required.")
+      if (!inputValue.trim()) return setError(t("provider.error.apiKeyRequired"))
       setApiKeyValue(inputValue)
       setStep("cache")
       setSelected(0)
@@ -147,16 +149,16 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   if (["provider-id", "name", "base-url", "api-key"].includes(step)) {
     return (
       <OpenCodePrompt
-        title="Connect provider"
-        label={step === "provider-id" ? "Provider ID" : step === "name" ? "Display name" : step === "base-url" ? "Base URL" : "API key"}
+        title={t("provider.title.connect")}
+        label={step === "provider-id" ? t("provider.providerId") : step === "name" ? t("provider.displayName") : step === "base-url" ? t("provider.baseURL") : t("provider.apiKey")}
         value={inputValue}
         masked={step === "api-key"}
         error={error}
-        hint={step === "base-url" ? endpointTemplate.baseURLHint : step === "api-key" && providerID.trim() ? `Stored automatically at ${defaultSecretFilePath(providerID.trim())}` : undefined}
-        footer={["Next\tenter", "Cancel\tesc"]}
+        hint={step === "base-url" ? endpointTemplate.baseURLHint : step === "api-key" && providerID.trim() ? t("provider.hint.storedAt", { path: defaultSecretFilePath(providerID.trim()) }) : undefined}
+        footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]}
       />
     )
   }
 
-  return <OpenCodeMenu title={step === "endpoint" ? "Connect provider" : "setCacheKey"} query={query} rows={openCodeMenuRows(selectGroups, query)} selectedIndex={selected} showSearch footer={["Cancel\tesc", "Select\tenter"]} />
+  return <OpenCodeMenu title={step === "endpoint" ? t("provider.title.connect") : t("provider.cacheKey")} query={query} rows={openCodeMenuRows(selectGroups, query)} selectedIndex={selected} showSearch footer={[`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]} />
 }

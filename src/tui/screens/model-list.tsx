@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react"
 import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -20,6 +21,7 @@ export function ModelListScreen(props: {
   onDeleteModel: (modelID: string) => void
   onBack: () => void
 }) {
+  const t = useTuiText()
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([])
   const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -27,9 +29,9 @@ export function ModelListScreen(props: {
   const keybinds = useTuiKeybinds()
 
   const groups: OpenCodeMenuGroup[] = [{
-    title: "Models",
+    title: t("model.models"),
     items: [
-      { id: "__add", label: "Add model" },
+      { id: "__add", label: t("model.add") },
       ...models.map((model) => ({ id: model.id, label: model.id, description: model.name })),
     ],
   }]
@@ -51,7 +53,7 @@ export function ModelListScreen(props: {
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
       if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)
@@ -103,8 +105,8 @@ export function ModelListScreen(props: {
     }
   }, [props.providerID, props.selection])
 
-  if (loading) return <Text>Loading models...</Text>
-  if (error) return <Text color="red">Failed to load models: {error}</Text>
+  if (loading) return <Text>{t("model.loading")}</Text>
+  if (error) return <Text color="red">{t("model.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title="Select model" query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={["Add\tctrl+a", "Delete\td", "Back\tesc"]} />
+  return <OpenCodeMenu title={t("model.select")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.add")}\tctrl+a`, `${t("common.delete")}\td`, `${t("common.back")}\tesc`]} />
 }

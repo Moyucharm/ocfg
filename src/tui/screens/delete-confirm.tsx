@@ -1,4 +1,5 @@
 import React, { useState } from "react"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -18,15 +19,17 @@ export function DeleteConfirmScreen(props: {
   onConfirm: (token?: string) => void
   onCancel: () => void
 }) {
+  const t = useTuiText()
   const [selected, setSelected] = useState(0)
   const [token, setToken] = useState("")
   const keybinds = useTuiKeybinds()
   const requiresToken = props.target.references.length > 0
   const targetLabel = props.target.kind === "provider" ? props.target.providerID : `${props.target.providerID}/${props.target.modelID}`
+  const kindLabel = t(props.target.kind === "provider" ? "delete.kind.provider" : "delete.kind.model")
   const expectedToken = props.target.kind === "provider" ? `delete:${props.target.providerID}` : `delete:${props.target.providerID}/${props.target.modelID}`
   const groups: OpenCodeMenuGroup[] = [{
-    title: "Delete",
-    items: actions.map((action) => ({ id: action, label: action === "Confirm" ? `Confirm ${targetLabel}` : action, danger: action === "Confirm" })),
+    title: t("delete.group"),
+    items: actions.map((action) => ({ id: action, label: action === "Confirm" ? t("delete.confirmTarget", { target: targetLabel }) : t("common.cancel"), danger: action === "Confirm" })),
   }]
 
   function runSelected(index = selected) {
@@ -47,7 +50,7 @@ export function DeleteConfirmScreen(props: {
     const rows = openCodeMenuRows(groups, "")
     const mouse = parseTuiMouseEvent(input)
     if (mouse) {
-      const clicked = menuItemIndexFromMouse(mouse, rows)
+      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
       if (clicked !== undefined) {
         setSelected(clicked)
         runSelected(clicked)
@@ -63,15 +66,15 @@ export function DeleteConfirmScreen(props: {
   if (requiresToken) {
     return (
       <OpenCodePrompt
-        title={`Delete ${props.target.kind}`}
-        label={`Type ${expectedToken}`}
+        title={t("delete.title", { kind: kindLabel })}
+        label={t("delete.typeToken", { token: expectedToken })}
         value={token}
         error={props.target.error}
-        hint={`Referenced by: ${props.target.references.join(", ")}`}
-        footer={["Continue\tenter", "Cancel\tesc"]}
+        hint={t("delete.referencedBy", { refs: props.target.references.join(", ") })}
+        footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]}
       />
     )
   }
 
-  return <OpenCodeMenu title={`Delete ${props.target.kind}`} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={["Select\tenter", "Cancel\tesc"]} />
+  return <OpenCodeMenu title={t("delete.title", { kind: kindLabel })} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]} />
 }

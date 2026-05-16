@@ -4,6 +4,7 @@ import { readConfig } from "../../core/config-reader.js"
 import { locateConfig } from "../../core/config-locator.js"
 import { runDoctor } from "../../core/doctor.js"
 import type { Diagnostic, Severity } from "../../core/types.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { useTuiTheme } from "../theme.js"
@@ -21,6 +22,7 @@ function severityLabel(severity: Severity) {
 }
 
 export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () => void }) {
+  const t = useTuiText()
   const [loading, setLoading] = useState(true)
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([])
   const [error, setError] = useState<string>()
@@ -54,21 +56,21 @@ export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () 
     }
   }, [props.selection])
 
-  if (loading) return <Text>{formatOpenCodeTitle("Doctor")} Inspecting config...</Text>
-  if (error) return <Text color="red">{formatOpenCodeTitle("Doctor")} failed: {error}</Text>
+  if (loading) return <Text>{formatOpenCodeTitle(t("doctor.title"))} {t("doctor.inspecting")}</Text>
+  if (error) return <Text color="red">{t("doctor.failed", { message: error })}</Text>
 
   const grouped = groupDiagnostics(diagnostics)
 
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
-        <Text bold>{formatOpenCodeTitle("Doctor")}</Text>
+        <Text bold>{formatOpenCodeTitle(t("doctor.title"))}</Text>
         <Text color={theme.colors.shortcut}>esc</Text>
       </Box>
       <Text> </Text>
       {diagnostics.length === 0 ? (
         <Box paddingX={5}>
-          <Text color={theme.colors.success}>No diagnostics found.</Text>
+          <Text color={theme.colors.success}>{t("doctor.none")}</Text>
         </Box>
       ) : null}
       {severities.map((severity) => {
@@ -90,7 +92,7 @@ export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () 
       })}
       <Text> </Text>
       <Box paddingX={5}>
-        <Text bold>Back<Text color={theme.colors.shortcut}> esc</Text></Text>
+        <Text bold>{t("common.back")}<Text color={theme.colors.shortcut}> esc</Text></Text>
       </Box>
     </Box>
   )

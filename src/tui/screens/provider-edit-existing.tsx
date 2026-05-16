@@ -2,6 +2,7 @@ import React, { useState } from "react"
 import { channelTypeOptions, channelTypeLabel } from "../../core/channel-types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import type { EndpointKind } from "../../core/types.js"
+import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
@@ -40,6 +41,7 @@ export function ProviderEditExistingScreen(props: {
   onEditModels: () => void
   onBack: () => void
 }) {
+  const t = useTuiText()
   const inferredKind = tryInferEndpointKindFromProvider(props.provider)
   const defaultKindIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === inferredKind.kind))
   const [mode, setMode] = useState<Mode>("menu")
@@ -56,32 +58,32 @@ export function ProviderEditExistingScreen(props: {
   const currentBaseURL = optionValue(props.provider, "baseURL") ?? ""
   const currentApiKey = optionValue(props.provider, "apiKey") ?? ""
   const displayedBaseURL = draft.baseURL ?? currentBaseURL
-  const displayedApiKey = draft.apiKeyValue ? maskSecret(draft.apiKeyValue) : currentApiKey ? maskSecret(currentApiKey) : "(missing)"
+  const displayedApiKey = draft.apiKeyValue ? maskSecret(draft.apiKeyValue) : currentApiKey ? maskSecret(currentApiKey) : t("common.missing")
   const cacheOptions = [false, true]
   const currentChannelType = draft.endpointKind ?? inferredKind.kind
   const selectedChannelType = channelTypeOptions[channelTypeIndex]!
 
   const menuGroups: OpenCodeMenuGroup[] = [{
-    title: "Provider",
+    title: t("provider.group"),
     items: [
-      { id: "channel-type", label: "Channel type", meta: currentChannelType ? channelTypeLabel(currentChannelType) : "(unknown)" },
-      { id: "name", label: "Display name", meta: (draft.name ?? currentName) || "(missing)", detail: (draft.name ?? currentName) ? `Display name: ${draft.name ?? currentName}` : undefined },
-      { id: "base-url", label: "Base URL", meta: displayedBaseURL || "(missing)", detail: displayedBaseURL ? `Base URL: ${displayedBaseURL}` : undefined },
-      { id: "api-key", label: "API key", meta: displayedApiKey },
-      { id: "cache", label: "setCacheKey", meta: String(draft.setCacheKey ?? cacheValue(props.provider)) },
-      { id: "edit-models", label: "Edit models" },
-      { id: "review", label: "Review diff" },
+      { id: "channel-type", label: t("provider.channelType"), meta: currentChannelType ? channelTypeLabel(currentChannelType) : t("provider.unknown") },
+      { id: "name", label: t("provider.displayName"), meta: (draft.name ?? currentName) || t("common.missing"), detail: (draft.name ?? currentName) ? t("provider.detail.displayName", { value: draft.name ?? currentName }) : undefined },
+      { id: "base-url", label: t("provider.baseURL"), meta: displayedBaseURL || t("common.missing"), detail: displayedBaseURL ? t("provider.detail.baseURL", { value: displayedBaseURL }) : undefined },
+      { id: "api-key", label: t("provider.apiKey"), meta: displayedApiKey },
+      { id: "cache", label: t("provider.cacheKey"), meta: t((draft.setCacheKey ?? cacheValue(props.provider)) ? "common.true" : "common.false") },
+      { id: "edit-models", label: t("provider.editModels") },
+      { id: "review", label: t("provider.reviewDiff") },
     ],
   }]
 
   const selectGroups: OpenCodeMenuGroup[] = mode === "channel-type"
-    ? [{ title: "Channel type", items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
-    : [{ title: "setCacheKey", items: cacheOptions.map((value) => ({ id: String(value), label: String(value) })) }]
+    ? [{ title: t("provider.channelType"), items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
+    : [{ title: t("provider.cacheKey"), items: cacheOptions.map((value) => ({ id: String(value), label: t(value ? "common.true" : "common.false") })) }]
 
   function startField(field: Field) {
     setError(undefined)
     if (field === "review") {
-      if (!inferredKind.kind && draft.endpointKind === undefined) return setError("Unknown provider type. Choose a channel type before saving.")
+      if (!inferredKind.kind && draft.endpointKind === undefined) return setError(t("provider.error.unknownType"))
       props.onComplete(draft)
       return
     }
@@ -111,7 +113,7 @@ export function ProviderEditExistingScreen(props: {
     if (mode === "name") setDraft((current) => ({ ...current, name: value }))
     if (mode === "base-url") setDraft((current) => ({ ...current, baseURL: value }))
     if (mode === "api-key") {
-      if (!value) return setError("API key is required.")
+      if (!value) return setError(t("provider.error.apiKeyRequired"))
       setDraft((current) => ({ ...current, apiKeyValue: value }))
     }
     setInputValue("")
@@ -190,24 +192,24 @@ export function ProviderEditExistingScreen(props: {
   if (mode === "name" || mode === "base-url" || mode === "api-key") {
     return (
       <OpenCodePrompt
-        title="Edit provider"
-        label={mode === "name" ? "Display name" : mode === "base-url" ? "Base URL" : "API key"}
+        title={t("provider.title.edit")}
+        label={mode === "name" ? t("provider.displayName") : mode === "base-url" ? t("provider.baseURL") : t("provider.apiKey")}
         value={inputValue}
         masked={mode === "api-key"}
         error={error}
-        hint={mode === "api-key" ? `Stored automatically at ${defaultSecretFilePath(props.providerID)}` : undefined}
+        hint={mode === "api-key" ? t("provider.hint.storedAt", { path: defaultSecretFilePath(props.providerID) }) : undefined}
       />
     )
   }
 
   return (
     <OpenCodeMenu
-      title={mode === "menu" ? `Edit ${props.providerID}` : mode === "channel-type" ? "Channel type" : "setCacheKey"}
+      title={mode === "menu" ? t("provider.title.editId", { id: props.providerID }) : mode === "channel-type" ? t("provider.channelType") : t("provider.cacheKey")}
       query={query}
       rows={openCodeMenuRows(mode === "menu" ? menuGroups : selectGroups, query)}
       selectedIndex={selected}
       showSearch
-      footer={mode === "menu" ? ["Back\tesc", "Open\tenter"] : ["Cancel\tesc", "Select\tenter"]}
+      footer={mode === "menu" ? [`${t("common.back")}\tesc`, `${t("common.open")}\tenter`] : [`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]}
       emptyText={error}
     />
   )
