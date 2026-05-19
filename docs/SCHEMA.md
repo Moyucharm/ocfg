@@ -24,12 +24,15 @@ OpenCode supports JSON and JSONC. The editor should prefer JSONC for newly creat
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {},
+  "plugin": ["opencode-wakatime", ["@my-org/custom-plugin", {}]],
   "model": "provider_id/model_id",
   "small_model": "provider_id/model_id"
 }
 ```
 
 `model` and `small_model` are optional. When present, they must reference an existing provider and model.
+
+`plugin` is optional. It stores npm plugin packages as strings, or package/options tuples of the form `[packageName, optionsObject]`.
 
 ## Provider Shape
 
@@ -123,6 +126,30 @@ Known model fields:
 - `variants`
 
 Do not generate unknown top-level model fields.
+
+## Plugin Shape
+
+OpenCode npm plugins are configured through the top-level `plugin` array:
+
+```jsonc
+{
+  "plugin": [
+    "opencode-wakatime",
+    ["@my-org/custom-plugin", { "enabled": true }]
+  ]
+}
+```
+
+OCfg must preserve existing tuple options when listing or deleting by package name. Adding a plugin without options should use the compact string form. Adding or editing plugin options should use the `[package, options]` tuple form.
+
+Local plugins are loaded by OpenCode from plugin directories rather than the top-level config array:
+
+```text
+~/.config/opencode/plugins/
+.opencode/plugins/
+```
+
+OCfg installs local plugins by copying `.js`, `.mjs`, `.cjs`, or `.ts` files into the target plugin directory. It disables local plugins by appending `.disabled` to the file name, and enables them by removing that suffix.
 
 ## Endpoint Templates
 

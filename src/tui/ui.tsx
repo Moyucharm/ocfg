@@ -2,7 +2,7 @@ import React, { useEffect, useState, type ReactNode } from "react"
 import { Box, Text, useStdout } from "ink"
 import { useTuiText } from "./i18n.js"
 import type { TuiDiffStyle } from "./preferences.js"
-import { useTuiTheme } from "./theme.js"
+import { useTuiTheme, type TuiTheme } from "./theme.js"
 import type { TuiMouseEvent } from "./mouse.js"
 
 export const openCodeContentWidth = 78
@@ -14,6 +14,7 @@ export type OpenCodeMenuItem = {
   meta?: string
   detail?: string
   marker?: string
+  tone?: "success" | "danger" | "muted"
   selected?: boolean
   backgroundColor?: string
   disabled?: boolean
@@ -271,6 +272,14 @@ export function maskSecret(value: string) {
   return `${value.slice(0, 4)}...${value.slice(-4)}`
 }
 
+export function openCodeMenuItemColor(item: OpenCodeMenuItem, theme: TuiTheme) {
+  if (item.selected) return theme.colors.primary
+  if (item.disabled || item.tone === "muted") return theme.colors.muted
+  if (item.tone === "success") return theme.colors.success
+  if (item.tone === "danger" || item.danger) return theme.colors.error
+  return theme.colors.primary
+}
+
 export function OpenCodeFrame(props: { children: ReactNode }) {
   const { stdout } = useStdout()
   const terminalWidth = Math.max(1, stdout.columns ?? openCodeContentWidth)
@@ -291,7 +300,7 @@ export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: bo
     <Text
       wrap="truncate"
       backgroundColor={backgroundColor}
-      color={props.selected ? theme.colors.highlightText : props.item.selected ? theme.colors.primary : props.item.disabled ? theme.colors.muted : props.item.danger ? theme.colors.error : theme.colors.primary}
+      color={props.selected ? theme.colors.highlightText : openCodeMenuItemColor(props.item, theme)}
       bold={props.selected || props.item.selected}
     >
       {formatMenuLine(props.item, { width: props.width ?? openCodeContentWidth, labelColumnWidth: props.labelColumnWidth })}

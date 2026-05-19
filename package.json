@@ -1,7 +1,7 @@
 {
   "name": "ocfg",
   "version": "0.1.0",
-  "description": "OpenCode provider configuration editor.",
+  "description": "OpenCode configuration editor.",
   "type": "module",
   "files": [
     "dist",
@@ -11,6 +11,7 @@
   "keywords": [
     "opencode",
     "provider",
+    "plugin",
     "cli",
     "tui",
     "jsonc"

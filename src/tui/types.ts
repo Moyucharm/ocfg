@@ -9,6 +9,10 @@ export type TuiRoute =
   | "provider-list"
   | "provider-edit"
   | "provider-edit-existing"
+  | "plugin-list"
+  | "plugin-add"
+  | "plugin-edit"
+  | "plugin-local-edit"
   | "model-list"
   | "model-add"
   | "model-edit-existing"
@@ -35,7 +39,15 @@ export type DeleteTargetState =
       error?: string
     }
 
-export type TuiAction = "doctor" | "add-provider" | "edit-provider" | "delete-provider" | "set-default-model" | "switch-config" | "switch-language"
+export type TuiAction =
+  | "doctor"
+  | "add-provider"
+  | "edit-provider"
+  | "delete-provider"
+  | "manage-plugins"
+  | "set-default-model"
+  | "switch-config"
+  | "switch-language"
 
 export type TuiConfigSelection = {
   scope: ConfigScope

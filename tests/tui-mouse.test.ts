@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { parseTuiMouseEvent } from "../src/tui/mouse.js"
-import { centeredFramePadding, formatMenuLine, maskSecret, menuItemIndexFromMouse, openCodeMenuRows, openCodeMenuViewport, textCellWidth, type OpenCodeMenuGroup } from "../src/tui/ui.js"
+import { resolveTuiTheme } from "../src/tui/theme.js"
+import { centeredFramePadding, formatMenuLine, maskSecret, menuItemIndexFromMouse, openCodeMenuItemColor, openCodeMenuRows, openCodeMenuViewport, textCellWidth, type OpenCodeMenuGroup } from "../src/tui/ui.js"
 
 describe("TUI mouse helpers", () => {
   test("parses SGR mouse click and wheel events", () => {
@@ -89,5 +90,12 @@ describe("TUI mouse helpers", () => {
 
     expect(line.startsWith("milki        自用API")).toBe(true)
     expect(line.endsWith("3 models")).toBe(true)
+  })
+  test("maps menu item tones to theme colors", () => {
+    const theme = resolveTuiTheme("opencode")
+
+    expect(openCodeMenuItemColor({ id: "enable", label: "Enable", tone: "success" }, theme)).toBe(theme.colors.success)
+    expect(openCodeMenuItemColor({ id: "disable", label: "Disable", tone: "danger" }, theme)).toBe(theme.colors.error)
+    expect(openCodeMenuItemColor({ id: "legacy", label: "Delete", danger: true }, theme)).toBe(theme.colors.error)
   })
 })

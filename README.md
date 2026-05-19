@@ -1,6 +1,6 @@
 # OCfg
 
-OpenCode provider configuration editor.
+OpenCode configuration editor.
 
 [中文文档](./README.zh-CN.md)
 
@@ -14,6 +14,7 @@ OpenCode provider configuration editor.
 - Add or delete models under existing providers.
 - Delete providers with reference checks for top-level defaults.
 - Set or clear top-level `model` and `small_model` from the TUI.
+- Install, enable, and disable OpenCode npm plugins and local plugin files.
 - Preserve JSONC comments outside edited paths where practical.
 - Write through validation, backup creation, and atomic rename.
 
@@ -63,6 +64,18 @@ ocfg add provider custom \
   --base-url https://example.com/v1 \
   --api-key sk-example \
   --model example-model
+```
+
+Install an OpenCode npm plugin:
+
+```bash
+ocfg install plugin opencode-wakatime
+```
+
+Install a local plugin file:
+
+```bash
+ocfg install plugin ./my-plugin.ts --local --config-scope project
 ```
 
 Preview a write without changing files:
@@ -172,6 +185,51 @@ Delete a model:
 ocfg delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
 ```
 
+List configured plugins:
+
+```bash
+ocfg list plugins [--config-scope global|project] [--config-path path] [--json]
+```
+
+Install or enable an npm plugin:
+
+```bash
+ocfg install plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg enable plugin <package-name> [--options-json <json>] [--dry-run]
+```
+
+Install a local plugin file:
+
+```bash
+ocfg install plugin <path-to-js-or-ts-file> --local [--as <filename>] [--config-scope global|project] [--dry-run]
+```
+
+Disable or enable a local plugin file:
+
+```bash
+ocfg disable plugin <filename-or-name> --local [--config-scope global|project] [--dry-run]
+ocfg enable plugin <filename-or-name> --local [--config-scope global|project] [--dry-run]
+```
+
+Add a plugin using the older alias:
+
+```bash
+ocfg add plugin <package-name> [--options-json <json>] [--dry-run]
+```
+
+Edit a plugin:
+
+```bash
+ocfg edit plugin <package-name> [--options-json <json> | --clear-options] [--dry-run]
+```
+
+Disable or delete an npm plugin:
+
+```bash
+ocfg disable plugin <package-name> [--dry-run]
+ocfg delete plugin <package-name> [--dry-run]
+```
+
 Open the TUI:
 
 ```bash
@@ -187,11 +245,12 @@ The TUI is opened with `ocfg tui`.
 - `Doctor` shows actionable config diagnostics.
 - `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
 - `Edit Provider` selects an existing provider, edits provider fields, and can enter model management.
+- `Manage Plugins` lists npm and local plugins, installs npm packages into config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
 - `Delete Provider` selects an existing provider and requires extra confirmation for referenced providers.
 - `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
 - `Switch Config Target` changes between global and project config targets before writing.
 
-Every mutating TUI flow shows a diff before writing and requires explicit confirmation.
+Config-mutating TUI flows show a diff before writing and require explicit confirmation. Local plugin installs report the affected file path; enable/disable changes are reflected directly in the plugin list status.
 
 ## Secret Handling
 

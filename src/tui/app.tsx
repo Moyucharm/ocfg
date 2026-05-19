@@ -7,6 +7,8 @@ import { validateConfig } from "../core/schema-validator.js"
 import { defaultSecretFilePath, restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
 import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
+import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
+import { disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
 import { applyConfigEdit, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import { HomeScreen } from "./screens/home.js"
 import { SelectConfigScreen } from "./screens/select-config.js"
@@ -15,6 +17,10 @@ import { DiffReviewScreen } from "./screens/diff-review.js"
 import { ProviderListScreen } from "./screens/provider-list.js"
 import { ProviderEditScreen } from "./screens/provider-edit.js"
 import { ProviderEditExistingScreen } from "./screens/provider-edit-existing.js"
+import { PluginAddScreen } from "./screens/plugin-add.js"
+import { PluginEditScreen } from "./screens/plugin-edit.js"
+import { PluginLocalEditScreen } from "./screens/plugin-local-edit.js"
+import { PluginListScreen } from "./screens/plugin-list.js"
 import { ModelListScreen } from "./screens/model-list.js"
 import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
@@ -52,6 +58,9 @@ export function App() {
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
   const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
+  const [selectedPlugin, setSelectedPlugin] = useState<PluginListItem>()
+  const [selectedLocalPlugin, setSelectedLocalPlugin] = useState<LocalPluginItem>()
+  const [pluginAddKind, setPluginAddKind] = useState<"npm" | "local">("npm")
   const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
   const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
@@ -94,6 +103,7 @@ export function App() {
     if (action === "doctor") navigate("doctor")
     if (action === "switch-config") navigate("select-config")
     if (action === "switch-language") navigate("language")
+    if (action === "manage-plugins") navigate("plugin-list")
     if (action === "add-provider") {
       setProviderListMode("add")
       navigate("provider-list")
@@ -325,6 +335,104 @@ export function App() {
     }
   }
 
+  async function reviewPluginAdd(packageName: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = enablePlugin(document.data, packageName)
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "plugin-add")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-add")
+    }
+  }
+
+  async function installLocalPluginFromInput(sourcePath: string) {
+    try {
+      const result = await installLocalPlugin(sourcePath, { scope: config.scope })
+      setMessage(translate(tuiPreferences.language, "plugin.localInstalled", { path: result.toPath }))
+      setRoute("plugin-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("plugin-list")
+    }
+  }
+
+  async function reviewPluginOptions(packageName: string, options: PluginOptions) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = updatePluginOptions(document.data, packageName, { options })
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "plugin-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
+    }
+  }
+
+  async function reviewPluginClearOptions(packageName: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = updatePluginOptions(document.data, packageName, { clearOptions: true })
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "plugin-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
+    }
+  }
+
+  async function reviewPluginDisable(packageName: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = disablePlugin(document.data, packageName)
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "plugin-list")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-list")
+    }
+  }
+
+  async function toggleLocalPlugin(plugin: LocalPluginItem) {
+    try {
+      if (plugin.status === "enabled") {
+        await disableLocalPlugin(plugin.fileName, { scope: config.scope })
+      } else {
+        await enableLocalPlugin(plugin.fileName, { scope: config.scope })
+      }
+      setMessage(undefined)
+      setRoute("plugin-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("plugin-list")
+    }
+  }
+
   async function beginProviderDelete(providerID: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
@@ -448,6 +556,51 @@ export function App() {
                 mode={providerListMode}
                 onAdd={() => navigate("provider-edit")}
                 onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "plugin-list" ? (
+              <PluginListScreen
+                selection={config}
+                onInstallNpmPlugin={() => {
+                  setPluginAddKind("npm")
+                  navigate("plugin-add")
+                }}
+                onInstallLocalPlugin={() => {
+                  setPluginAddKind("local")
+                  navigate("plugin-add")
+                }}
+                onEditPlugin={(plugin) => {
+                  setSelectedPlugin(plugin)
+                  navigate("plugin-edit")
+                }}
+                onEditLocalPlugin={(plugin) => {
+                  setSelectedLocalPlugin(plugin)
+                  navigate("plugin-local-edit")
+                }}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "plugin-add" ? (
+              <PluginAddScreen
+                kind={pluginAddKind}
+                onAdd={(value) => void (pluginAddKind === "npm" ? reviewPluginAdd(value) : installLocalPluginFromInput(value))}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "plugin-edit" && selectedPlugin ? (
+              <PluginEditScreen
+                plugin={selectedPlugin}
+                onSaveOptions={(packageName, options) => void reviewPluginOptions(packageName, options)}
+                onClearOptions={(packageName) => void reviewPluginClearOptions(packageName)}
+                onDisable={(packageName) => void reviewPluginDisable(packageName)}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "plugin-local-edit" && selectedLocalPlugin ? (
+              <PluginLocalEditScreen
+                plugin={selectedLocalPlugin}
+                onToggle={(plugin) => void toggleLocalPlugin(plugin)}
                 onBack={() => goBack()}
               />
             ) : null}

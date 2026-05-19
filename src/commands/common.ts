@@ -9,6 +9,8 @@ import type { ConfigDocument, ConfigScope, Diagnostic, EndpointKind } from "../c
 export type ConfigCommandOptions = {
   configScope?: ConfigScope
   configPath?: string
+  cwd?: string
+  home?: string
   json?: boolean
 }
 
@@ -30,7 +32,7 @@ const endpointKinds = new Set<EndpointKind>([
 ])
 
 export async function loadConfigForCommand(options: ConfigCommandOptions) {
-  const target = locateConfig({ scope: options.configScope, configPath: options.configPath })
+  const target = locateConfig({ scope: options.configScope, configPath: options.configPath, cwd: options.cwd, home: options.home })
   const document = await readConfig(target)
   return { target, document }
 }

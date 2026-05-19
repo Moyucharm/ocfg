@@ -4,7 +4,7 @@ OCfg is designed to reduce the risk of breaking OpenCode config files or acciden
 
 ## Supported Security Model
 
-The tool edits local OpenCode configuration files only.
+The tool edits local OpenCode configuration files and, for local plugin management, user-selected OpenCode plugin directory files only.
 
 It validates the complete next config before mutating writes.
 
@@ -66,7 +66,9 @@ Use manual model entry when you do not want the tool to contact an endpoint.
 
 ## Write Safety
 
-TUI mutating flows show a diff before writing and require explicit confirmation.
+TUI config-mutating flows show a diff before writing and require explicit confirmation.
+
+Local plugin file operations do not have a config diff; they report the affected path directly.
 
 CLI mutating flows support `--dry-run` to validate and print the planned diff without writing.
 
@@ -108,7 +110,7 @@ This tool does not guarantee OpenCode runtime hot reload.
 
 This tool does not patch or fork OpenCode core.
 
-This tool does not provide a v1 OpenCode plugin workflow; the plugin wrapper is deprecated for v1.
+This tool manages OpenCode plugin configuration and local plugin files, but it does not execute plugin code or verify third-party plugin behavior.
 
 Users remain responsible for local file permissions, shell history hygiene, endpoint trust, key rotation, and system compromise response.
 

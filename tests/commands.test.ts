@@ -8,6 +8,15 @@ import { addProviderCommand } from "../src/commands/add.js"
 import { deleteModelCommand, deleteProviderCommand } from "../src/commands/delete.js"
 import { doctorCommand } from "../src/commands/doctor.js"
 import { editModelCommand, editProviderCommand } from "../src/commands/edit.js"
+import {
+  addPluginCommand,
+  deletePluginCommand,
+  disablePluginCommand,
+  editPluginCommand,
+  enablePluginCommand,
+  installPluginCommand,
+  listPluginsCommand,
+} from "../src/commands/plugin.js"
 import { defaultSecretFilePath, expandHomePath } from "../src/core/secret-file.js"
 import { validateCommand } from "../src/commands/validate.js"
 import type { ValidationResult } from "../src/core/config-writer.js"
@@ -218,6 +227,71 @@ describe("commands", () => {
 
     await deleteModelCommand("custom/model", { configPath: filePath, validate: valid })
     expect(parse(await readFile(filePath, "utf8")).provider.custom.models.model).toBeUndefined()
+  })
+
+  test("lists configured plugins", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": ["opencode-wakatime", ["@my-org/custom-plugin", { "enabled": true }]]
+}
+`)
+
+    await listPluginsCommand({ configPath: filePath, configScope: "project", json: true })
+
+    const output = JSON.parse(log.mock.calls[0]?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string }) => plugin.packageName)).toEqual(["opencode-wakatime", "@my-org/custom-plugin"])
+    expect(output.npmPlugins).toHaveLength(2)
+    expect(output.localPlugins).toEqual([])
+  })
+
+  test("adds edits and deletes plugin config", async () => {
+    const filePath = await tempFile()
+
+    await addPluginCommand("opencode-wakatime", { configPath: filePath, optionsJson: "{\"apiKey\":\"{env:WAKATIME_API_KEY}\"}", validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { apiKey: "{env:WAKATIME_API_KEY}" }]])
+
+    await editPluginCommand("opencode-wakatime", { configPath: filePath, clearOptions: true, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual(["opencode-wakatime"])
+
+    await deletePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([])
+  })
+
+  test("installs enables and disables npm plugins", async () => {
+    const filePath = await tempFile()
+
+    await installPluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    await installPluginCommand("opencode-wakatime", { configPath: filePath, optionsJson: "{\"enabled\":true}", validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { enabled: true }]])
+
+    await disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([])
+
+    await enablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual(["opencode-wakatime"])
+  })
+
+  test("installs enables and disables local plugins", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "ocfg-local-plugin-command-"))
+    const source = path.join(cwd, "my-plugin.ts")
+    await writeFile(source, "export const Plugin = async () => ({})\n")
+
+    await installPluginCommand(source, { configScope: "project", cwd, local: true, validate: valid })
+    await expect(readFile(path.join(cwd, ".opencode", "plugins", "my-plugin.ts"), "utf8")).resolves.toContain("Plugin")
+
+    await disablePluginCommand("my-plugin", { configScope: "project", cwd, local: true, validate: valid })
+    await expect(stat(path.join(cwd, ".opencode", "plugins", "my-plugin.ts.disabled"))).resolves.toBeDefined()
+
+    await enablePluginCommand("my-plugin", { configScope: "project", cwd, local: true, validate: valid })
+    await expect(stat(path.join(cwd, ".opencode", "plugins", "my-plugin.ts"))).resolves.toBeDefined()
+  })
+
+  test("plugin command dry-run does not create missing config", async () => {
+    const filePath = await tempFile()
+
+    await addPluginCommand("opencode-wakatime", { configPath: filePath, dryRun: true, validate: valid })
+
+    await expect(stat(filePath)).rejects.toThrow()
+    expect(log.mock.calls.some((call) => String(call[0]).includes("Dry run"))).toBe(true)
   })
 
   test("validation failure prevents mutating command writes", async () => {

@@ -1,6 +1,6 @@
 # OCfg
 
-OpenCode 提供商配置编辑器。
+OpenCode 配置编辑器。
 
 ## 功能特性
 
@@ -12,6 +12,7 @@ OpenCode 提供商配置编辑器。
 - 在现有提供商下添加或删除模型。
 - 删除提供商时检查顶层默认引用。
 - 在 TUI 中设置或清除顶层 `model` 和 `small_model`。
+- 安装、启用和禁用 OpenCode npm 插件与本地插件文件。
 - 尽可能保留编辑路径之外的 JSONC 注释。
 - 写入时执行验证、备份创建和原子重命名。
 
@@ -61,6 +62,18 @@ ocfg add provider custom \
   --base-url https://example.com/v1 \
   --api-key sk-example \
   --model example-model
+```
+
+安装一个 OpenCode npm 插件：
+
+```bash
+ocfg install plugin opencode-wakatime
+```
+
+安装一个本地插件文件：
+
+```bash
+ocfg install plugin ./my-plugin.ts --local --config-scope project
 ```
 
 预览写入内容而不修改文件：
@@ -170,6 +183,51 @@ ocfg delete provider <provider-id> [--confirm-token <token>] [--dry-run]
 ocfg delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
 ```
 
+列出已配置插件：
+
+```bash
+ocfg list plugins [--config-scope global|project] [--config-path path] [--json]
+```
+
+安装或启用 npm 插件：
+
+```bash
+ocfg install plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg enable plugin <package-name> [--options-json <json>] [--dry-run]
+```
+
+安装本地插件文件：
+
+```bash
+ocfg install plugin <path-to-js-or-ts-file> --local [--as <filename>] [--config-scope global|project] [--dry-run]
+```
+
+禁用或启用本地插件文件：
+
+```bash
+ocfg disable plugin <filename-or-name> --local [--config-scope global|project] [--dry-run]
+ocfg enable plugin <filename-or-name> --local [--config-scope global|project] [--dry-run]
+```
+
+使用旧别名添加插件：
+
+```bash
+ocfg add plugin <package-name> [--options-json <json>] [--dry-run]
+```
+
+编辑插件：
+
+```bash
+ocfg edit plugin <package-name> [--options-json <json> | --clear-options] [--dry-run]
+```
+
+禁用或删除 npm 插件：
+
+```bash
+ocfg disable plugin <package-name> [--dry-run]
+ocfg delete plugin <package-name> [--dry-run]
+```
+
 打开 TUI：
 
 ```bash
@@ -185,11 +243,12 @@ ocfg tui
 - `Doctor` 显示可执行的配置诊断信息。
 - `Add Provider` 通过端点类型、提供商元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 diff 审查来创建提供商。
 - `Edit Provider` 选择现有提供商，编辑提供商字段，并可进入模型管理。
+- `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
 - `Delete Provider` 选择现有提供商，并对被引用的提供商要求额外确认。
 - `Set Default Model` 使用现有 provider/model 引用设置或清除顶层 `model` 和 `small_model`。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。
 
-每个会修改配置的 TUI 流程都会在写入前显示 diff，并要求明确确认。
+会修改配置的 TUI 流程会在写入前显示 diff，并要求明确确认。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
 
 ## 密钥处理
 
