@@ -21,6 +21,7 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
         { id: "edit-provider", label: t("home.editProvider") },
         { id: "add-provider", label: t("home.connectProvider") },
         { id: "manage-plugins", label: t("home.managePlugins") },
+        { id: "manage-prompts", label: t("home.managePrompts") },
         { id: "doctor", label: t("home.doctor") },
         { id: "set-default-model", label: t("home.setDefaultModel") },
         { id: "switch-config", label: t("home.switchConfig") },

@@ -16,6 +16,18 @@ export function applyConfigEdit(document: ConfigDocument, path: (string | number
   return applyEdits(source, edits)
 }
 
+export function applyConfigEdits(document: ConfigDocument, changes: { path: (string | number)[]; value: unknown }[]): string {
+  let source = document.text || "{}\n"
+  for (const change of changes) {
+    const edits = modify(source, change.path, change.value, {
+      formattingOptions,
+      getInsertionIndex: (properties) => properties.length,
+    })
+    source = applyEdits(source, edits)
+  }
+  return source
+}
+
 export function applyProviderEdit(document: ConfigDocument, providerID: string, providerConfig: unknown): string {
   return applyConfigEdit(document, ["provider", providerID], providerConfig)
 }

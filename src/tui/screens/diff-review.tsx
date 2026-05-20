@@ -26,6 +26,7 @@ function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, wri
   rowsBeforeActions += 1 // Target section
   rowsBeforeActions += 1 // target path
   if (review.secretFile) rowsBeforeActions += 1
+  if (review.promptFile) rowsBeforeActions += 1
   rowsBeforeActions += 1 // spacer
   if (writing) rowsBeforeActions += 1
   if (review.diagnostics && review.diagnostics.length > 0) {
@@ -104,7 +105,7 @@ export function DiffReviewScreen(props: {
   const keybinds = useTuiKeybinds()
   const diffLines = diffLineCount(props.review.diff)
   const diagnosticsRows = props.review.diagnostics && props.review.diagnostics.length > 0 ? props.review.diagnostics.length + 2 : 0
-  const staticRows = 12 + (props.review.secretFile ? 1 : 0) + (writing ? 1 : 0) + diagnosticsRows
+  const staticRows = 12 + (props.review.secretFile ? 1 : 0) + (props.review.promptFile ? 1 : 0) + (writing ? 1 : 0) + diagnosticsRows
   const maxDiffLines = Math.max(1, (stdout.rows ?? 24) - staticRows)
   const maxDiffOffset = Math.max(0, diffLines - maxDiffLines)
   const renderedDiffOffset = Math.min(diffOffset, maxDiffOffset)
@@ -182,6 +183,7 @@ export function DiffReviewScreen(props: {
         <FieldRow label={t("diff.target")} value={props.review.result?.targetPath ?? props.review.targetPath} />
         {props.review.result?.backupPath ? <FieldRow label={t("diff.backup")} value={props.review.result.backupPath} /> : null}
         {props.review.secretFilePath ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFilePath} /> : null}
+        {props.review.promptFilePath ? <FieldRow label={t("diff.promptFile")} value={props.review.promptFilePath} /> : null}
         <Text> </Text>
         <OpenCodeNotice tone="success">{t("diff.restart")}</OpenCodeNotice>
         <Text> </Text>
@@ -216,6 +218,7 @@ export function DiffReviewScreen(props: {
       <Section title={t("diff.target")} />
       <FieldRow label={t("diff.path")} value={props.review.targetPath} />
       {props.review.secretFile ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFile.path} dim /> : null}
+      {props.review.promptFile ? <FieldRow label={t("diff.promptFile")} value={props.review.promptFile.path} dim /> : null}
       <Text> </Text>
       {writing ? <OpenCodeNotice>{t("diff.writing")}</OpenCodeNotice> : null}
       {props.review.diagnostics && props.review.diagnostics.length > 0 ? (

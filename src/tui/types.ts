@@ -13,6 +13,9 @@ export type TuiRoute =
   | "plugin-add"
   | "plugin-edit"
   | "plugin-local-edit"
+  | "prompt-list"
+  | "prompt-add"
+  | "prompt-edit"
   | "model-list"
   | "model-add"
   | "model-edit-existing"
@@ -45,6 +48,7 @@ export type TuiAction =
   | "edit-provider"
   | "delete-provider"
   | "manage-plugins"
+  | "manage-prompts"
   | "set-default-model"
   | "switch-config"
   | "switch-language"
@@ -67,6 +71,13 @@ export type DiffReviewState = {
     value: string
   }
   secretFilePath?: string
+  promptFile?: {
+    action: "delete"
+    target: ConfigTarget
+    name: string
+    path: string
+  }
+  promptFilePath?: string
   error?: string
   completed?: boolean
 }

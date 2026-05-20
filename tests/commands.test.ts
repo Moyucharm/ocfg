@@ -17,8 +17,23 @@ import {
   installPluginCommand,
   listPluginsCommand,
 } from "../src/commands/plugin.js"
+import {
+  addPromptCommand,
+  addRuleProfileCommand,
+  deleteRulesCommand,
+  deletePromptCommand,
+  deleteRuleProfileCommand,
+  editPromptCommand,
+  editRuleProfileCommand,
+  editRulesCommand,
+  listPromptsCommand,
+  removeInstructionCommand,
+  switchRuleProfileCommand,
+  switchPromptCommand,
+} from "../src/commands/prompt.js"
 import { defaultSecretFilePath, expandHomePath } from "../src/core/secret-file.js"
 import { validateCommand } from "../src/commands/validate.js"
+import { instructionRefForPromptFile, promptRefForFile } from "../src/core/prompt-manager.js"
 import type { ValidationResult } from "../src/core/config-writer.js"
 
 function valid(): ValidationResult {
@@ -41,10 +56,16 @@ async function writeConfig(text: string) {
   return filePath
 }
 
+function ocfgDataPath() {
+  if (!process.env.HOME) throw new Error("HOME is required for ocfg test data")
+  return path.join(process.env.HOME, ".config", "ocfg")
+}
+
 describe("commands", () => {
   let exitCode: string | number | undefined
   let log: ReturnType<typeof vi.spyOn>
   let error: ReturnType<typeof vi.spyOn>
+  let warn: ReturnType<typeof vi.spyOn>
   let originalHome: string | undefined
 
   beforeEach(async () => {
@@ -54,6 +75,7 @@ describe("commands", () => {
     process.env.HOME = await mkdtemp(path.join(os.tmpdir(), "oc-provider-editor-home-"))
     log = vi.spyOn(console, "log").mockImplementation(() => undefined)
     error = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({}), { status: 200 }))
   })
 
@@ -62,6 +84,7 @@ describe("commands", () => {
     process.env.HOME = originalHome
     log.mockRestore()
     error.mockRestore()
+    warn.mockRestore()
     vi.unstubAllGlobals()
   })
 
@@ -292,6 +315,78 @@ describe("commands", () => {
 
     await expect(stat(filePath)).rejects.toThrow()
     expect(log.mock.calls.some((call) => String(call[0]).includes("Dry run"))).toBe(true)
+  })
+
+  test("adds edits switches lists and deletes prompt files", async () => {
+    const filePath = await tempFile()
+
+    await addPromptCommand("review strict", { configPath: filePath, content: "# Review\n\nFind bugs.\n", validate: valid })
+    await expect(readFile(path.join(ocfgDataPath(), "prompts", "review-strict.md"), "utf8")).resolves.toContain("Find bugs")
+
+    await editPromptCommand("review-strict", { configPath: filePath, content: "Updated prompt\n", validate: valid })
+    await expect(readFile(path.join(ocfgDataPath(), "prompts", "review-strict.md"), "utf8")).resolves.toBe("Updated prompt\n")
+
+    await switchPromptCommand("review-strict", { configPath: filePath, agent: "build", validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).agent.build.prompt).toBe(promptRefForFile("review-strict.md", { scope: "custom", path: filePath, exists: false, format: "jsonc", ocfgDataPath: ocfgDataPath() }))
+
+    await switchPromptCommand("review-strict", { configPath: filePath, rules: true, validate: valid })
+    await expect(readFile(path.join(path.dirname(filePath), "AGENTS.md"), "utf8")).resolves.toBe("Updated prompt\n")
+
+    await switchPromptCommand("review-strict", { configPath: filePath, globalInstructions: true, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).instructions).toEqual([instructionRefForPromptFile("review-strict.md", { scope: "custom", path: filePath, exists: false, format: "jsonc", ocfgDataPath: ocfgDataPath() })])
+
+    await listPromptsCommand({ configPath: filePath, json: true })
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.prompts[0].activeAgents).toEqual(["build"])
+    expect(output.prompts[0].instructionRefs).toEqual([instructionRefForPromptFile("review-strict.md", { scope: "custom", path: filePath, exists: false, format: "jsonc", ocfgDataPath: ocfgDataPath() })])
+    expect(output.templates.length).toBeGreaterThan(0)
+
+    await removeInstructionCommand(instructionRefForPromptFile("review-strict.md", { scope: "custom", path: filePath, exists: false, format: "jsonc", ocfgDataPath: ocfgDataPath() }), { configPath: filePath, validate: valid })
+    expect(parse(await readFile(filePath, "utf8")).instructions).toBeUndefined()
+
+    await deletePromptCommand("review-strict", { configPath: filePath, validate: valid })
+    await expect(stat(path.join(ocfgDataPath(), "prompts", "review-strict.md"))).rejects.toThrow()
+    expect(parse(await readFile(filePath, "utf8")).agent.build.prompt).toBeUndefined()
+  })
+
+  test("edits and deletes selected AGENTS.md rules", async () => {
+    const filePath = await tempFile()
+    const rulesPath = path.join(path.dirname(filePath), "AGENTS.md")
+
+    await editRulesCommand({ configPath: filePath, content: "# Rules\n\nUse tests.\n", validate: valid })
+    await expect(readFile(rulesPath, "utf8")).resolves.toContain("Use tests")
+
+    await deleteRulesCommand({ configPath: filePath, validate: valid })
+    await expect(stat(rulesPath)).rejects.toThrow()
+  })
+
+  test("adds edits switches and deletes reusable AGENTS.md configs", async () => {
+    const filePath = await tempFile()
+    const configDir = path.dirname(filePath)
+    const ocfgDir = ocfgDataPath()
+
+    await addRuleProfileCommand("fufu", { configPath: filePath, content: "# Fufu\n", validate: valid })
+    await expect(readFile(path.join(ocfgDir, "agents", "fufu.md"), "utf8")).resolves.toBe("# Fufu\n")
+
+    await editRuleProfileCommand("fufu", { configPath: filePath, content: "# Fufu updated\n", validate: valid })
+    await editRulesCommand({ configPath: filePath, content: "# Original rules\n", validate: valid })
+    const switchResult = await switchRuleProfileCommand("fufu", { configPath: filePath, validate: valid })
+    await expect(readFile(path.join(configDir, "AGENTS.md"), "utf8")).resolves.toBe("# Fufu updated\n")
+    expect(switchResult.preservedPath).toMatch(/previous-agents-\d{8}T\d{6}Z\.md$/)
+    await expect(readFile(switchResult.preservedPath!, "utf8")).resolves.toBe("# Original rules\n")
+    expect(warn.mock.calls.at(-1)?.[0]).toContain("current AGENTS.md is not saved in ocfg")
+
+    warn.mockClear()
+    await addRuleProfileCommand("other", { configPath: filePath, content: "# Other\n", validate: valid })
+    await switchRuleProfileCommand("other", { configPath: filePath, validate: valid })
+    expect(warn).not.toHaveBeenCalled()
+
+    await listPromptsCommand({ configPath: filePath, json: true })
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.ruleProfiles.find((profile: { fileName: string }) => profile.fileName === "other.md")).toMatchObject({ fileName: "other.md", active: true })
+
+    await deleteRuleProfileCommand("fufu", { configPath: filePath, validate: valid })
+    await expect(stat(path.join(ocfgDir, "agents", "fufu.md"))).rejects.toThrow()
   })
 
   test("validation failure prevents mutating command writes", async () => {

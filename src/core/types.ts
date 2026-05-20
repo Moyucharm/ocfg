@@ -54,6 +54,7 @@ export type ConfigTarget = {
   path: string
   exists: boolean
   format: "json" | "jsonc"
+  ocfgDataPath?: string
 }
 
 export type Severity = "high" | "medium" | "low"

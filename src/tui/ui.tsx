@@ -4,6 +4,7 @@ import { useTuiText } from "./i18n.js"
 import type { TuiDiffStyle } from "./preferences.js"
 import { useTuiTheme, type TuiTheme } from "./theme.js"
 import type { TuiMouseEvent } from "./mouse.js"
+import { cursorAtEnd, normalizeCursor, type TextCursor } from "./text-editor.js"
 
 export const openCodeContentWidth = 78
 
@@ -225,6 +226,73 @@ function truncateLine(text: string, width: number) {
   return truncateCells(text, width)
 }
 
+function sliceCells(text: string, start: number, end?: number) {
+  return Array.from(text).slice(start, end).join("")
+}
+
+export type OpenCodeTextAreaRow = {
+  lineIndex: number
+  startColumn: number
+  endColumn: number
+  text: string
+}
+
+export function openCodeTextAreaRows(value: string, width: number): OpenCodeTextAreaRow[] {
+  const safeWidth = Math.max(1, width)
+  const rows: OpenCodeTextAreaRow[] = []
+  const lines = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+
+  lines.forEach((line, lineIndex) => {
+    const chars = Array.from(line)
+    if (chars.length === 0) {
+      rows.push({ lineIndex, startColumn: 0, endColumn: 0, text: "" })
+      return
+    }
+
+    let startColumn = 0
+    let current = ""
+    let currentWidth = 0
+    chars.forEach((char, column) => {
+      const charWidth = cellWidthForChar(char)
+      if (current && currentWidth + charWidth > safeWidth) {
+        rows.push({ lineIndex, startColumn, endColumn: column, text: current })
+        startColumn = column
+        current = char
+        currentWidth = charWidth
+        return
+      }
+      current += char
+      currentWidth += charWidth
+    })
+
+    rows.push({ lineIndex, startColumn, endColumn: chars.length, text: current })
+  })
+
+  return rows
+}
+
+export function openCodeTextAreaViewport(value: string, cursor: TextCursor, width: number, maxRows: number) {
+  const safeMaxRows = Math.max(1, maxRows)
+  const normalizedCursor = normalizeCursor(value, cursor)
+  const rows = openCodeTextAreaRows(value, width)
+  let cursorRowIndex = rows.findIndex((row) => (
+    row.lineIndex === normalizedCursor.line &&
+    normalizedCursor.column >= row.startColumn &&
+    normalizedCursor.column <= row.endColumn
+  ))
+  if (cursorRowIndex === -1) cursorRowIndex = Math.max(0, rows.length - 1)
+
+  const start = Math.max(0, Math.min(cursorRowIndex - safeMaxRows + 1, Math.max(0, rows.length - safeMaxRows)))
+  const visibleRows = rows.slice(start, start + safeMaxRows)
+  return {
+    rows: visibleRows,
+    cursor,
+    cursorRowIndex: cursorRowIndex - start,
+    hiddenBefore: start > 0,
+    hiddenAfter: start + safeMaxRows < rows.length,
+  }
+}
+
 export function formatOpenCodeTitle(title: string) {
   return title.startsWith("OCfg") ? title : `OCfg - ${title}`
 }
@@ -431,6 +499,79 @@ export function OpenCodePrompt(props: {
       <Text> </Text>
       <Box paddingX={5} gap={3}>
         {(props.footer ?? [`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]).map((item, index) => {
+          const [label, shortcut] = item.split("\t")
+          return (
+            <Text key={`${item}-${index}`} bold>
+              {label}{shortcut ? <Text color={theme.colors.shortcut}> {shortcut}</Text> : null}
+            </Text>
+          )
+        })}
+      </Box>
+    </Box>
+  )
+}
+
+export function OpenCodeTextArea(props: {
+  title: string
+  label: string
+  value: string
+  cursor?: TextCursor
+  error?: string
+  hint?: string
+  footer?: string[]
+}) {
+  const theme = useTuiTheme()
+  const t = useTuiText()
+  const { stdout } = useStdout()
+  const [cursorVisible, setCursorVisible] = useState(true)
+  const contentWidth = Math.max(1, terminalContentWidth(stdout.columns) - 10)
+  const maxLines = Math.max(4, (stdout.rows ?? 24) - 10)
+  const cursor = normalizeCursor(props.value, props.cursor ?? cursorAtEnd(props.value))
+  const viewport = openCodeTextAreaViewport(props.value, cursor, contentWidth, maxLines)
+
+  useEffect(() => {
+    const timer = setInterval(() => setCursorVisible((visible) => !visible), 550)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" paddingX={5}>
+        <Text bold>{formatOpenCodeTitle(props.title)}</Text>
+        <Text color={theme.colors.shortcut}>esc</Text>
+      </Box>
+      <Text> </Text>
+      <Box paddingX={5}>
+        <Text color={theme.colors.section} bold>{props.label}</Text>
+      </Box>
+      {viewport.hiddenBefore ? <Box paddingX={5}><Text color={theme.colors.muted}>...</Text></Box> : null}
+      {viewport.rows.map((row, index) => {
+        const hasCursor = index === viewport.cursorRowIndex
+        const cursorOffset = hasCursor ? Math.max(0, Math.min(Array.from(row.text).length, cursor.column - row.startColumn)) : -1
+        const chars = Array.from(row.text)
+        const before = hasCursor ? chars.slice(0, cursorOffset).join("") : row.text
+        const cursorChar = hasCursor ? chars[cursorOffset] : undefined
+        const after = hasCursor ? chars.slice(cursorOffset + (cursorChar ? 1 : 0)).join("") : ""
+        return (
+          <Box key={`${row.lineIndex}-${row.startColumn}-${index}`} paddingX={5}>
+            <Text wrap="truncate">
+              {before || (!hasCursor && !row.text ? " " : "")}
+              {hasCursor ? (
+                <Text backgroundColor={cursorVisible ? theme.colors.highlight : undefined} color={cursorVisible ? theme.colors.highlightText : theme.colors.primary}>
+                  {cursorChar ?? " "}
+                </Text>
+              ) : null}
+              {after}
+            </Text>
+          </Box>
+        )
+      })}
+      {viewport.hiddenAfter ? <Box paddingX={5}><Text color={theme.colors.muted}>...</Text></Box> : null}
+      {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted}>{props.hint}</Text></Box> : null}
+      {props.error ? <Box paddingX={5}><Text color={theme.colors.error}>{props.error}</Text></Box> : null}
+      <Text> </Text>
+      <Box paddingX={5} gap={3}>
+        {(props.footer ?? [`${t("common.save")}\tctrl+x`, `${t("common.cancel")}\tesc`]).map((item, index) => {
           const [label, shortcut] = item.split("\t")
           return (
             <Text key={`${item}-${index}`} bold>

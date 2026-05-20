@@ -13,6 +13,20 @@ import {
   installPluginCommand,
   listPluginsCommand,
 } from "./commands/plugin.js"
+import {
+  addPromptCommand,
+  addRuleProfileCommand,
+  deleteRulesCommand,
+  deletePromptCommand,
+  deleteRuleProfileCommand,
+  editPromptCommand,
+  editRuleProfileCommand,
+  editRulesCommand,
+  listPromptsCommand,
+  removeInstructionCommand,
+  switchRuleProfileCommand,
+  switchPromptCommand,
+} from "./commands/prompt.js"
 import { validateCommand } from "./commands/validate.js"
 import type { ConfigScope } from "./core/types.js"
 
@@ -86,6 +100,30 @@ addMutatingOptions(add.command("plugin <package-name>").description("Add an Open
     await runAction(() => addPluginCommand(packageName, normalizeOptions(options) as never))
   })
 
+addMutatingOptions(add.command("prompt <name>").description("Add an OpenCode prompt file."))
+  .option("--content <text>", "Prompt content")
+  .option("--content-file <path>", "Read prompt content from a file")
+  .option("--template <id>", "Use a built-in prompt template")
+  .option("--global-instructions", "Add this prompt file to top-level instructions", false)
+  .option("--agent <agent-id>", "Apply this prompt to an OpenCode agent")
+  .action(async (name, options) => {
+    await runAction(() => addPromptCommand(name, normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(add.command("rules").description("Create or replace the selected OpenCode AGENTS.md rules file."))
+  .option("--content <text>", "Rules content")
+  .option("--content-file <path>", "Read rules content from a file")
+  .action(async (options) => {
+    await runAction(() => editRulesCommand(normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(add.command("rules-config <name>").description("Add a reusable AGENTS.md rules config."))
+  .option("--content <text>", "Rules content")
+  .option("--content-file <path>", "Read rules content from a file")
+  .action(async (name, options) => {
+    await runAction(() => addRuleProfileCommand(name, normalizeOptions(options) as never))
+  })
+
 addMutatingOptions(program.command("install").description("Install OpenCode plugins.").command("plugin <plugin>").description("Install an OpenCode npm or local plugin."))
   .option("--local", "Install from a local JavaScript or TypeScript plugin file", false)
   .option("--as <filename>", "Destination filename for --local installs")
@@ -136,6 +174,27 @@ addMutatingOptions(edit.command("plugin <package-name>").description("Edit an Op
     await runAction(() => editPluginCommand(packageName, normalizeOptions(options) as never))
   })
 
+addMutatingOptions(edit.command("prompt <name>").description("Edit an OpenCode prompt file."))
+  .option("--content <text>", "Prompt content")
+  .option("--content-file <path>", "Read prompt content from a file")
+  .action(async (name, options) => {
+    await runAction(() => editPromptCommand(name, normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(edit.command("rules").description("Edit the selected OpenCode AGENTS.md rules file."))
+  .option("--content <text>", "Rules content")
+  .option("--content-file <path>", "Read rules content from a file")
+  .action(async (options) => {
+    await runAction(() => editRulesCommand(normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(edit.command("rules-config <name>").description("Edit a reusable AGENTS.md rules config."))
+  .option("--content <text>", "Rules content")
+  .option("--content-file <path>", "Read rules content from a file")
+  .action(async (name, options) => {
+    await runAction(() => editRuleProfileCommand(name, normalizeOptions(options) as never))
+  })
+
 const del = program.command("delete").description("Delete OpenCode configuration entries.")
 addMutatingOptions(del.command("provider <provider-id>").description("Delete a provider."))
   .option("--confirm-token <token>", "Required token for referenced deletes")
@@ -154,10 +213,49 @@ addMutatingOptions(del.command("plugin <package-name>").description("Delete an O
     await runAction(() => deletePluginCommand(packageName, normalizeOptions(options) as never))
   })
 
+addMutatingOptions(del.command("prompt <name>").description("Delete an OpenCode prompt file and clear matching agent references."))
+  .action(async (name, options) => {
+    await runAction(() => deletePromptCommand(name, normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(del.command("rules").description("Delete the selected OpenCode AGENTS.md rules file."))
+  .action(async (options) => {
+    await runAction(() => deleteRulesCommand(normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(del.command("rules-config <name>").description("Delete a reusable AGENTS.md rules config."))
+  .action(async (name, options) => {
+    await runAction(() => deleteRuleProfileCommand(name, normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(del.command("instruction <ref>").description("Remove an entry from top-level instructions."))
+  .action(async (ref, options) => {
+    await runAction(() => removeInstructionCommand(ref, normalizeOptions(options) as never))
+  })
+
+const switchCommand = program.command("switch").description("Switch OpenCode configuration selections.")
+addMutatingOptions(switchCommand.command("prompt <name>").description("Apply a prompt file or built-in prompt template globally or to an agent."))
+  .option("--agent <agent-id>", "OpenCode agent ID, such as build or plan")
+  .option("--global-instructions", "Add this prompt file to top-level instructions", false)
+  .option("--rules", "Replace the selected AGENTS.md rules file with this prompt", false)
+  .action(async (name, options) => {
+    await runAction(() => switchPromptCommand(name, normalizeOptions(options) as never))
+  })
+
+addMutatingOptions(switchCommand.command("rules-config <name>").description("Switch the selected AGENTS.md to a reusable rules config."))
+  .action(async (name, options) => {
+    await runAction(() => switchRuleProfileCommand(name, normalizeOptions(options) as never))
+  })
+
 const list = program.command("list").description("List OpenCode configuration entries.")
 addConfigOptions(list.command("plugins").description("List configured OpenCode npm and local plugins."))
   .action(async (options) => {
     await runAction(() => listPluginsCommand(normalizeOptions(options)))
+  })
+
+addConfigOptions(list.command("prompts").description("List OpenCode rules, instructions, prompt files, and built-in templates."))
+  .action(async (options) => {
+    await runAction(() => listPromptsCommand(normalizeOptions(options)))
   })
 
 program.command("tui").description("Open the interactive terminal UI.").action(async () => {

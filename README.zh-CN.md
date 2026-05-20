@@ -13,6 +13,7 @@ OpenCode 配置编辑器。
 - 删除提供商时检查顶层默认引用。
 - 在 TUI 中设置或清除顶层 `model` 和 `small_model`。
 - 安装、启用和禁用 OpenCode npm 插件与本地插件文件。
+- 管理 OpenCode 提示词/规则文件，覆盖 `AGENTS.md`、顶层 `instructions` 和单个 agent 的 `agent.<id>.prompt`。
 - 尽可能保留编辑路径之外的 JSONC 注释。
 - 写入时执行验证、备份创建和原子重命名。
 
@@ -74,6 +75,12 @@ ocfg install plugin opencode-wakatime
 
 ```bash
 ocfg install plugin ./my-plugin.ts --local --config-scope project
+```
+
+安装默认提示词模板作为所选 `AGENTS.md` 规则文件：
+
+```bash
+ocfg switch prompt build-focused --rules
 ```
 
 预览写入内容而不修改文件：
@@ -228,6 +235,45 @@ ocfg disable plugin <package-name> [--dry-run]
 ocfg delete plugin <package-name> [--dry-run]
 ```
 
+列出 AGENTS.md 规则、已配置 instructions、提示词文件和内置提示词模板：
+
+```bash
+ocfg list prompts [--config-scope global|project] [--config-path path] [--json]
+```
+
+添加、编辑、切换或删除提示词文件：
+
+```bash
+ocfg add prompt <name> [--content <text> | --content-file <path> | --template <id>] [--global-instructions | --agent <agent-id>] [--dry-run]
+ocfg edit prompt <name> (--content <text> | --content-file <path>) [--dry-run]
+ocfg switch prompt <name-or-template-id> (--rules | --global-instructions | --agent <agent-id>) [--dry-run]
+ocfg delete prompt <name> [--dry-run]
+```
+
+编辑或移除 OpenCode 规则/指令条目：
+
+```bash
+ocfg add rules (--content <text> | --content-file <path>) [--config-scope global|project] [--dry-run]
+ocfg edit rules (--content <text> | --content-file <path>) [--config-scope global|project] [--dry-run]
+ocfg delete rules [--config-scope global|project] [--dry-run]
+ocfg delete instruction <ref> [--dry-run]
+```
+
+管理可复用的 `AGENTS.md` 配置：
+
+```bash
+ocfg add rules-config <name> [--content <text> | --content-file <path>] [--dry-run]
+ocfg edit rules-config <name> (--content <text> | --content-file <path>) [--dry-run]
+ocfg switch rules-config <name> [--dry-run]
+ocfg delete rules-config <name> [--dry-run]
+```
+
+OpenCode 使用 `AGENTS.md` 作为全局/项目规则，使用 `instructions` 追加可复用规则文件，使用 `agent.<id>.prompt` 管理单个 agent 的 system prompt。ocfg 自己管理的提示词文件会存放在 `~/.config/ocfg/prompts/`，可复用 `AGENTS.md` 配置会存放在 `~/.config/ocfg/agents/`；OpenCode 配置里只写入指向这些 ocfg 文件的引用。`--rules` 会替换所选 `AGENTS.md`，`--global-instructions` 会把 ocfg 提示词文件路径写入 `instructions`，agent 切换会把 ocfg 提示词文件引用写入 `agent.<id>.prompt`。
+
+替换或删除已有 `AGENTS.md` 时会把带时间戳的备份放在 `~/.config/ocfg/backups/agents/`；如果当前规则尚未存在于可复用配置库，还会保存到 `~/.config/ocfg/agents/previous-agents-*.md`，方便之后切回。
+
+当替换 `AGENTS.md` 且当前规则尚未保存在 `~/.config/ocfg/agents/` 时，TUI 会先显示覆盖风险确认。CLI 命令会在继续执行前打印同样的风险提示，并说明可切换副本和 `AGENTS.md.bak.*` 备份的位置。
+
 打开 TUI：
 
 ```bash
@@ -244,6 +290,7 @@ ocfg tui
 - `Add Provider` 通过端点类型、提供商元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 diff 审查来创建提供商。
 - `Edit Provider` 选择现有提供商，编辑提供商字段，并可进入模型管理。
 - `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
+- `Manage Prompts` 列出并编辑 `AGENTS.md`、可复用 `AGENTS.md` 配置、已配置的 `instructions`、提示词文件和内置默认模板；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则，创建、编辑、替换和删除当前 `AGENTS.md`，添加自定义提示词文件，用支持方向键移动和自动换行的多行编辑器编辑内容，作为全局指令使用，或应用到 `build`、`plan` 及自定义 agent。
 - `Delete Provider` 选择现有提供商，并对被引用的提供商要求额外确认。
 - `Set Default Model` 使用现有 provider/model 引用设置或清除顶层 `model` 和 `small_model`。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。

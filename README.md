@@ -15,6 +15,7 @@ OpenCode configuration editor.
 - Delete providers with reference checks for top-level defaults.
 - Set or clear top-level `model` and `small_model` from the TUI.
 - Install, enable, and disable OpenCode npm plugins and local plugin files.
+- Manage OpenCode prompt/rule files, including `AGENTS.md`, top-level `instructions`, and per-agent `agent.<id>.prompt`.
 - Preserve JSONC comments outside edited paths where practical.
 - Write through validation, backup creation, and atomic rename.
 
@@ -76,6 +77,12 @@ Install a local plugin file:
 
 ```bash
 ocfg install plugin ./my-plugin.ts --local --config-scope project
+```
+
+Install a default prompt template as the selected `AGENTS.md` rules file:
+
+```bash
+ocfg switch prompt build-focused --rules
 ```
 
 Preview a write without changing files:
@@ -230,6 +237,45 @@ ocfg disable plugin <package-name> [--dry-run]
 ocfg delete plugin <package-name> [--dry-run]
 ```
 
+List AGENTS.md rules, configured instructions, prompt files, and bundled prompt templates:
+
+```bash
+ocfg list prompts [--config-scope global|project] [--config-path path] [--json]
+```
+
+Add, edit, switch, or delete prompt files:
+
+```bash
+ocfg add prompt <name> [--content <text> | --content-file <path> | --template <id>] [--global-instructions | --agent <agent-id>] [--dry-run]
+ocfg edit prompt <name> (--content <text> | --content-file <path>) [--dry-run]
+ocfg switch prompt <name-or-template-id> (--rules | --global-instructions | --agent <agent-id>) [--dry-run]
+ocfg delete prompt <name> [--dry-run]
+```
+
+Edit or remove OpenCode rule/instruction entries:
+
+```bash
+ocfg add rules (--content <text> | --content-file <path>) [--config-scope global|project] [--dry-run]
+ocfg edit rules (--content <text> | --content-file <path>) [--config-scope global|project] [--dry-run]
+ocfg delete rules [--config-scope global|project] [--dry-run]
+ocfg delete instruction <ref> [--dry-run]
+```
+
+Manage reusable `AGENTS.md` configs:
+
+```bash
+ocfg add rules-config <name> [--content <text> | --content-file <path>] [--dry-run]
+ocfg edit rules-config <name> (--content <text> | --content-file <path>) [--dry-run]
+ocfg switch rules-config <name> [--dry-run]
+ocfg delete rules-config <name> [--dry-run]
+```
+
+OpenCode uses `AGENTS.md` for global/project rules, `instructions` for extra reusable rule files, and `agent.<id>.prompt` for an individual agent's system prompt. ocfg-owned prompt files are stored under `~/.config/ocfg/prompts/` and reusable `AGENTS.md` configs under `~/.config/ocfg/agents/`; the OpenCode config only receives file references to those ocfg-managed files. `--rules` replaces the selected `AGENTS.md`, `--global-instructions` writes the ocfg prompt file path to `instructions`, and agent switching writes an ocfg prompt file reference to `agent.<id>.prompt`.
+
+Replacing or deleting an existing `AGENTS.md` keeps a timestamped backup under `~/.config/ocfg/backups/agents/` and, when the current rules are not already in the reusable config library, saves them under `~/.config/ocfg/agents/previous-agents-*.md` so they can be switched back later.
+
+When replacing `AGENTS.md` and the current rules are not already saved in `~/.config/ocfg/agents/`, the TUI shows an overwrite-risk confirmation first. CLI commands print the same risk warning before continuing, including where to find the reusable copy and `AGENTS.md.bak.*` backups.
+
 Open the TUI:
 
 ```bash
@@ -246,6 +292,7 @@ The TUI is opened with `ocfg tui`.
 - `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
 - `Edit Provider` selects an existing provider, edits provider fields, and can enter model management.
 - `Manage Plugins` lists npm and local plugins, installs npm packages into config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
+- `Manage Prompts` lists and edits `AGENTS.md`, reusable `AGENTS.md` configs, configured `instructions`, prompt files, and bundled defaults. It can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules; create, edit, replace, and delete the active `AGENTS.md`; add custom prompt files; edit multi-line content with arrow-key cursor movement and wrapping; use a prompt globally; or apply it to `build`, `plan`, or a custom agent.
 - `Delete Provider` selects an existing provider and requires extra confirmation for referenced providers.
 - `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
 - `Switch Config Target` changes between global and project config targets before writing.

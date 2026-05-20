@@ -9,7 +9,33 @@ import { writeConfigSafely } from "../core/config-writer.js"
 import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
 import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
 import { disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
-import { applyConfigEdit, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
+import { applyConfigEdit, applyConfigEdits, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
+import {
+  addInstructionRef,
+  assessRuleOverwriteRisk,
+  deletePromptFileSafely,
+  deleteRuleProfileSafely,
+  deleteRuleFileSafely,
+  instructionRefForPromptFile,
+  promptRefForFile,
+  readInstructionFile,
+  readPromptFile,
+  readRuleProfile,
+  readRuleFile,
+  removeInstructionRef,
+  removePromptReferences,
+  setAgentPrompt,
+  writeInstructionFileSafely,
+  writePromptFileSafely,
+  writeRuleProfileSafely,
+  writeRuleFileSafely,
+  type ConfigInstructionItem,
+  type PromptFile,
+  type PromptTemplate,
+  type PromptWriteResult,
+  type RuleFile,
+  type RuleProfile,
+} from "../core/prompt-manager.js"
 import { HomeScreen } from "./screens/home.js"
 import { SelectConfigScreen } from "./screens/select-config.js"
 import { DoctorScreen } from "./screens/doctor.js"
@@ -21,6 +47,9 @@ import { PluginAddScreen } from "./screens/plugin-add.js"
 import { PluginEditScreen } from "./screens/plugin-edit.js"
 import { PluginLocalEditScreen } from "./screens/plugin-local-edit.js"
 import { PluginListScreen } from "./screens/plugin-list.js"
+import { PromptAddScreen } from "./screens/prompt-add.js"
+import { PromptEditScreen, type PromptEditState } from "./screens/prompt-edit.js"
+import { PromptListScreen } from "./screens/prompt-list.js"
 import { ModelListScreen } from "./screens/model-list.js"
 import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
@@ -61,6 +90,8 @@ export function App() {
   const [selectedPlugin, setSelectedPlugin] = useState<PluginListItem>()
   const [selectedLocalPlugin, setSelectedLocalPlugin] = useState<LocalPluginItem>()
   const [pluginAddKind, setPluginAddKind] = useState<"npm" | "local">("npm")
+  const [promptAddKind, setPromptAddKind] = useState<"prompt" | "rule-profile">("prompt")
+  const [promptEditState, setPromptEditState] = useState<PromptEditState>()
   const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
   const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
@@ -77,6 +108,15 @@ export function App() {
   function goBack(fallback: TuiRoute = "home") {
     const previousRoute = routeHistory.current.pop()
     setRoute(previousRoute ?? fallback)
+  }
+
+  function promptWriteMessage(key: "prompt.saved" | "prompt.deleted" | "prompt.switchedRuleConfig", result: PromptWriteResult) {
+    const details = [
+      result.preservedPath ? translate(tuiPreferences.language, "prompt.preservedRules", { path: result.preservedPath }) : undefined,
+      result.backupPath ? translate(tuiPreferences.language, "prompt.backup", { path: result.backupPath }) : undefined,
+    ].filter(Boolean)
+    const base = translate(tuiPreferences.language, key, { path: result.path })
+    return details.length > 0 ? `${base} ${details.join(" ")}` : base
   }
 
   useEffect(() => {
@@ -104,6 +144,7 @@ export function App() {
     if (action === "switch-config") navigate("select-config")
     if (action === "switch-language") navigate("language")
     if (action === "manage-plugins") navigate("plugin-list")
+    if (action === "manage-prompts") navigate("prompt-list")
     if (action === "add-provider") {
       setProviderListMode("add")
       navigate("provider-list")
@@ -214,7 +255,12 @@ export function App() {
         if (secretSnapshot) await restoreSecretFile(secretSnapshot)
         return { ...review, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
       }
-      return { ...review, result, secretFilePath, completed: true }
+      let promptFilePath: string | undefined
+      if (review.promptFile?.action === "delete") {
+        const promptResult = await deletePromptFileSafely(review.promptFile.target, review.promptFile.name)
+        promptFilePath = promptResult.path
+      }
+      return { ...review, result, secretFilePath, promptFilePath, completed: true }
     } catch (caught) {
       if (secretSnapshot) await restoreSecretFile(secretSnapshot)
       return { ...review, error: caught instanceof Error ? caught.message : String(caught) }
@@ -433,6 +479,265 @@ export function App() {
     }
   }
 
+  function sameJSON(left: unknown, right: unknown) {
+    return JSON.stringify(left) === JSON.stringify(right)
+  }
+
+  function promptConfigText(document: Awaited<ReturnType<typeof readConfig>>, nextConfig: Record<string, unknown>) {
+    const changes: { path: (string | number)[]; value: unknown }[] = []
+    if (!sameJSON(document.data.agent, nextConfig.agent)) changes.push({ path: ["agent"], value: nextConfig.agent })
+    if (!sameJSON(document.data.instructions, nextConfig.instructions)) changes.push({ path: ["instructions"], value: nextConfig.instructions })
+    return changes.length > 0 ? applyConfigEdits(document, changes) : document.text || "{}\n"
+  }
+
+  async function openPromptFile(prompt: PromptFile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const content = await readPromptFile(target, prompt.fileName)
+      setPromptEditState({ kind: "file", prompt, content })
+      navigate("prompt-edit")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  function openPromptTemplate(template: PromptTemplate) {
+    setPromptEditState({ kind: "template", template, content: template.content })
+    navigate("prompt-edit")
+  }
+
+  async function openRuleFile(rule: RuleFile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const content = await readRuleFile(target)
+      setPromptEditState({ kind: "rule", rule, content })
+      navigate("prompt-edit")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function openRuleProfile(profile: RuleProfile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const content = await readRuleProfile(target, profile.fileName)
+      setPromptEditState({ kind: "rule-profile", profile, content })
+      navigate("prompt-edit")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function openInstructionFile(instruction: ConfigInstructionItem) {
+    try {
+      const content = instruction.editable ? await readInstructionFile(instruction) : ""
+      setPromptEditState({ kind: "instruction", instruction, content })
+      navigate("prompt-edit")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function savePromptContent(fileName: string, content: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await writePromptFileSafely(target, fileName, content)
+      setMessage(promptWriteMessage("prompt.saved", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function saveRuleContent(content: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await writeRuleFileSafely(target, content)
+      setMessage(promptWriteMessage("prompt.saved", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function saveRuleProfileContent(fileName: string, content: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await writeRuleProfileSafely(target, fileName, content)
+      setMessage(promptWriteMessage("prompt.saved", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function updateRuleProfileContent(profile: RuleProfile, content: string) {
+    await saveRuleProfileContent(profile.fileName, content)
+  }
+
+  async function assessRulesOverwrite(content: string) {
+    const target = config.target ?? locateConfig({ scope: config.scope })
+    return assessRuleOverwriteRisk(target, content)
+  }
+
+  async function applyRulesContent(content: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await writeRuleFileSafely(target, content)
+      setMessage(promptWriteMessage("prompt.saved", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function switchRuleProfile(profile: RuleProfile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const content = await readRuleProfile(target, profile.fileName)
+      const result = await writeRuleFileSafely(target, content)
+      setMessage(promptWriteMessage("prompt.switchedRuleConfig", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function deleteRuleProfile(profile: RuleProfile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await deleteRuleProfileSafely(target, profile.fileName)
+      setMessage(promptWriteMessage("prompt.deleted", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function saveInstructionContent(instruction: ConfigInstructionItem, content: string) {
+    try {
+      const result = await writeInstructionFileSafely(instruction, content)
+      setMessage(promptWriteMessage("prompt.saved", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function reviewPromptGlobalApply(fileName: string, content: string, shouldWritePrompt: boolean) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      if (shouldWritePrompt) await writePromptFileSafely(target, fileName, content, { backup: false })
+      const document = await readConfig(target)
+      const nextConfig = addInstructionRef(document.data, instructionRefForPromptFile(fileName, target))
+      const nextText = promptConfigText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "prompt-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
+    }
+  }
+
+  async function reviewPromptApply(fileName: string, content: string, agentID: string, shouldWritePrompt: boolean) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      if (shouldWritePrompt) await writePromptFileSafely(target, fileName, content, { backup: false })
+      const document = await readConfig(target)
+      const nextConfig = setAgentPrompt(document.data, agentID, promptRefForFile(fileName, target), {
+        description: `Uses ${fileName}`,
+        mode: "primary",
+      })
+      const nextText = promptConfigText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "prompt-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
+    }
+  }
+
+  async function deletePrompt(prompt: PromptFile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = removePromptReferences(document.data, prompt.ref, instructionRefForPromptFile(prompt.fileName, target))
+      const shouldWriteConfig = !sameJSON(document.data.agent, nextConfig.agent) || !sameJSON(document.data.instructions, nextConfig.instructions)
+      if (!shouldWriteConfig) {
+        const result = await deletePromptFileSafely(target, prompt.fileName)
+        setMessage(promptWriteMessage("prompt.deleted", result))
+        setRoute("prompt-list")
+        return
+      }
+
+      const nextText = promptConfigText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+        promptFile: {
+          action: "delete",
+          target,
+          name: prompt.fileName,
+          path: prompt.path,
+        },
+      }, "prompt-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
+    }
+  }
+
+  async function deleteRule(rule: RuleFile) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const result = await deleteRuleFileSafely(target)
+      setMessage(promptWriteMessage("prompt.deleted", result))
+      setRoute("prompt-list")
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : String(caught))
+      setRoute("prompt-list")
+    }
+  }
+
+  async function reviewInstructionRemove(instruction: ConfigInstructionItem) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = removeInstructionRef(document.data, instruction.ref)
+      const nextText = promptConfigText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "prompt-edit")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
+    }
+  }
+
   async function beginProviderDelete(providerID: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
@@ -601,6 +906,51 @@ export function App() {
               <PluginLocalEditScreen
                 plugin={selectedLocalPlugin}
                 onToggle={(plugin) => void toggleLocalPlugin(plugin)}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "prompt-list" ? (
+              <PromptListScreen
+                selection={config}
+                onAddPrompt={() => {
+                  setPromptAddKind("prompt")
+                  navigate("prompt-add")
+                }}
+                onAddRuleProfile={() => {
+                  setPromptAddKind("rule-profile")
+                  navigate("prompt-add")
+                }}
+                onSelectRule={(rule) => void openRuleFile(rule)}
+                onSelectRuleProfile={(profile) => void openRuleProfile(profile)}
+                onSelectInstruction={(instruction) => void openInstructionFile(instruction)}
+                onSelectPrompt={(prompt) => void openPromptFile(prompt)}
+                onSelectTemplate={openPromptTemplate}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "prompt-add" ? (
+              <PromptAddScreen
+                kind={promptAddKind}
+                onSave={(fileName, content) => void (promptAddKind === "rule-profile" ? saveRuleProfileContent(fileName, content) : savePromptContent(fileName, content))}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "prompt-edit" && promptEditState ? (
+              <PromptEditScreen
+                state={promptEditState}
+                onSaveContent={(fileName, content) => void savePromptContent(fileName, content)}
+                onSaveRule={(content) => void saveRuleContent(content)}
+                onSaveRuleProfile={(profile, content) => void updateRuleProfileContent(profile, content)}
+                onSaveInstruction={(instruction, content) => void saveInstructionContent(instruction, content)}
+                onAssessRuleOverwriteRisk={(content) => assessRulesOverwrite(content)}
+                onApplyRules={(content) => void applyRulesContent(content)}
+                onSwitchRuleProfile={(profile) => void switchRuleProfile(profile)}
+                onApplyGlobal={(fileName, content, shouldWritePrompt) => void reviewPromptGlobalApply(fileName, content, shouldWritePrompt)}
+                onApply={(fileName, content, agentID, shouldWritePrompt) => void reviewPromptApply(fileName, content, agentID, shouldWritePrompt)}
+                onDelete={(prompt) => void deletePrompt(prompt)}
+                onDeleteRule={(rule) => void deleteRule(rule)}
+                onDeleteRuleProfile={(profile) => void deleteRuleProfile(profile)}
+                onRemoveInstruction={(instruction) => void reviewInstructionRemove(instruction)}
                 onBack={() => goBack()}
               />
             ) : null}
