@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
 import { defaultSecretFilePath, expandHomePath, restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../src/core/secret-file.js"
 
 async function tempDir() {
@@ -15,6 +15,11 @@ function mode(value: number) {
 const supportsPrivateModeAssertions = process.platform !== "win32"
 
 describe("secret file", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
   test("generates stable safe paths from provider IDs", () => {
     expect(defaultSecretFilePath("My OpenAI.Provider", "/home/test")).toBe(
       "/home/test/.config/ocfg/secrets/my-openai.provider.api-key",
@@ -23,6 +28,15 @@ describe("secret file", () => {
 
   test("expands tilde paths", () => {
     expect(expandHomePath("~/.secrets/key", "/home/test")).toBe("/home/test/.secrets/key")
+  })
+
+  test("does not treat a literal HOME tilde as the Windows home directory", () => {
+    vi.stubEnv("HOME", "~")
+    vi.spyOn(os, "homedir").mockReturnValue("C:\\Users\\alice")
+
+    expect(expandHomePath("~/.config/ocfg/secrets/custom.api-key")).toBe(
+      "C:\\Users\\alice\\.config\\ocfg\\secrets\\custom.api-key",
+    )
   })
 
   test("writes secret files with private permissions", async () => {

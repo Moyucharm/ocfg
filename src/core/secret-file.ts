@@ -16,7 +16,18 @@ function safeProviderFileName(providerID: string) {
 }
 
 function defaultHome() {
-  return process.env.HOME || os.homedir()
+  const envHome = process.env.HOME?.trim()
+  if (isUsableHome(envHome)) return envHome
+
+  const osHome = os.homedir()
+  if (isUsableHome(osHome)) return osHome
+
+  return envHome || osHome
+}
+
+function isUsableHome(home: string | undefined): home is string {
+  if (!home || home === "~") return false
+  return path.isAbsolute(home) || path.win32.isAbsolute(home)
 }
 
 function usesWindowsPath(home: string) {
