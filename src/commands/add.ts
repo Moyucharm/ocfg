@@ -26,9 +26,11 @@ export async function addProviderCommand(providerID: string, options: AddProvide
   const modelIDs = options.model ?? []
   if (modelIDs.length === 0) throw new Error("At least one --model is required")
   let modelsDevData
+  const metadataWarnings: string[] = []
   try {
     modelsDevData = await loadModelsDev()
-  } catch {
+  } catch (caught) {
+    metadataWarnings.push(`models.dev metadata unavailable: ${caught instanceof Error ? caught.message : String(caught)}; no model limit or capabilities were guessed.`)
     modelsDevData = {}
   }
 
@@ -47,5 +49,12 @@ export async function addProviderCommand(providerID: string, options: AddProvide
   const nextConfig = addProvider(document.data, generated.provider)
   const nextText = applyProviderEdit(document, providerID, (nextConfig.provider as Record<string, unknown>)[providerID])
 
-  return writeMutation({ document, options, nextConfig, nextText, secretFile: { path: apiKeyFilePath, value: parseManagedApiKeyValue(options) } })
+  return writeMutation({
+    document,
+    options,
+    nextConfig,
+    nextText,
+    warnings: [...metadataWarnings, ...generated.warnings],
+    secretFile: { path: apiKeyFilePath, value: parseManagedApiKeyValue(options) },
+  })
 }

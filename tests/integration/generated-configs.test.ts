@@ -148,7 +148,7 @@ const fixtureCases: Array<{
     kind: "openai-compatible",
     fileName: "openai-compatible.config.jsonc",
     providerID: "custom-openai",
-    modelID: "gpt-5-compatible",
+    modelID: "gpt-5",
     expectedNpm: "@ai-sdk/openai-compatible",
     secretEnv: "CUSTOM_OPENAI_API_KEY",
   },

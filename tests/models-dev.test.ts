@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { clearModelsDevCache, findModelsDevModel, findModelsDevModelForEndpoint, loadModelsDev, modelsDevToModelDraft } from "../src/core/models-dev.js"
+import { clearModelsDevCache, findModelsDevModel, findModelsDevModelForEndpoint, loadModelsDev, lookupModelsDevModelForEndpoint, modelsDevToModelDraft } from "../src/core/models-dev.js"
 
 function fakeFetch(data: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(data), { status: 200 })) as typeof fetch
@@ -24,6 +24,62 @@ const data = {
           low: { reasoningEffort: "low" },
           high: { reasoningEffort: "high" },
         },
+      },
+      "gpt-5.5": {
+        id: "gpt-5.5",
+        name: "GPT-5.5",
+        reasoning: true,
+        temperature: false,
+        tool_call: true,
+        attachment: true,
+        limit: { context: 1050000, input: 922000, output: 128000 },
+        modalities: { input: ["text", "image"], output: ["text"] },
+      },
+      "gpt-5.5-pro": {
+        id: "gpt-5.5-pro",
+        name: "GPT-5.5 Pro",
+        reasoning: true,
+        temperature: false,
+        tool_call: true,
+        attachment: true,
+        limit: { context: 1050000, input: 922000, output: 128000 },
+        modalities: { input: ["text", "image"], output: ["text"] },
+      },
+      "qwen-3.6-plus": {
+        id: "qwen-3.6-plus",
+        name: "Qwen3.6 Plus",
+        reasoning: true,
+        temperature: true,
+        tool_call: true,
+        limit: { context: 1000000, output: 65536 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      "deepseek-v3.2": {
+        id: "deepseek-v3.2",
+        name: "DeepSeek V3.2",
+        reasoning: true,
+        temperature: true,
+        tool_call: true,
+        limit: { context: 163840, output: 65536 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      "glm-4.6": {
+        id: "glm-4.6",
+        name: "GLM-4.6",
+        reasoning: true,
+        temperature: true,
+        tool_call: true,
+        limit: { context: 204800, output: 131072 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      "kimi-k2.5": {
+        id: "kimi-k2.5",
+        name: "Kimi K2.5",
+        reasoning: true,
+        temperature: true,
+        tool_call: true,
+        limit: { context: 262144, output: 262144 },
+        modalities: { input: ["text"], output: ["text"] },
       },
     },
   },
@@ -79,6 +135,152 @@ describe("models.dev", () => {
     expect(match?.confidence).toBe("candidate-provider")
   })
 
+  test("matches normalized model names without relying on custom provider IDs", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "123456",
+      modelID: "gpt5.5",
+      options: { data },
+    })
+
+    expect(match?.providerID).toBe("openai")
+    expect(match?.modelID).toBe("gpt-5.5")
+    expect(match?.confidence).toBe("alias-candidate")
+    expect(match?.model.limit?.context).toBe(1050000)
+  })
+
+  test("strips model namespace prefixes before matching model names", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "openai/gpt-5.5",
+      options: { data },
+    })
+
+    expect(match?.providerID).toBe("openai")
+    expect(match?.modelID).toBe("gpt-5.5")
+    expect(match?.model.name).toBe("GPT-5.5")
+  })
+
+  test("does not treat custom provider suffixes as model aliases", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "shenye",
+      modelID: "gpt-5.5-shenye",
+      options: { data },
+    })
+
+    expect(match).toBeUndefined()
+  })
+
+  test("does not match a base model name to a suffixed model", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "gpt-5.5",
+      options: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5-mini": {
+                id: "gpt-5.5-mini",
+                name: "GPT-5.5 Mini",
+                limit: { context: 1000, output: 1000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(match).toBeUndefined()
+  })
+
+  test("does not use display names to collapse model suffixes", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "gpt-5.5",
+      options: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5-mini": {
+                id: "gpt-5.5-mini",
+                name: "GPT-5.5",
+                limit: { context: 1000, output: 1000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(match).toBeUndefined()
+  })
+
+  test("does not match a suffixed model name to a base model", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "gpt-5.5-mini",
+      options: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5",
+                limit: { context: 1000, output: 1000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(match).toBeUndefined()
+  })
+
+  test("does not collapse official model suffixes", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "gpt-5.5-pro",
+      options: { data },
+    })
+
+    expect(match?.modelID).toBe("gpt-5.5-pro")
+    expect(match?.model.name).toBe("GPT-5.5 Pro")
+  })
+
+  test("normalizes common domestic model name separators", async () => {
+    for (const [modelID, expected] of [
+      ["qwen3.6-plus", "qwen-3.6-plus"],
+      ["qwen-3-6-plus", "qwen-3.6-plus"],
+      ["deepseek-v3.2", "deepseek-v3.2"],
+      ["glm4.6", "glm-4.6"],
+      ["kimi-k2.5", "kimi-k2.5"],
+    ] as const) {
+      const match = await findModelsDevModelForEndpoint({
+        endpointKind: "openai-compatible",
+        providerID: "123456",
+        modelID,
+        options: { data },
+      })
+
+      expect(match?.providerID).toBe("openai")
+      expect(match?.modelID).toBe(expected)
+      expect(match?.model.limit).toBeDefined()
+    }
+  })
+
   test("falls back to global unique model IDs", async () => {
     const match = await findModelsDevModelForEndpoint({
       endpointKind: "openai-compatible",
@@ -89,6 +291,36 @@ describe("models.dev", () => {
 
     expect(match?.providerID).toBe("anthropic")
     expect(match?.confidence).toBe("global-unique")
+  })
+
+  test("reports ambiguous global matches without selecting one", async () => {
+    const result = await lookupModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      modelID: "shared-model",
+      options: {
+        data: {
+          first: { id: "first", name: "First", models: { "shared-model": { id: "shared-model", name: "Shared Model", limit: { context: 1, output: 1 } } } },
+          second: { id: "second", name: "Second", models: { "shared-model": { id: "shared-model", name: "Shared Model", limit: { context: 2, output: 2 } } } },
+        } as any,
+      },
+    })
+
+    expect(result.match).toBeUndefined()
+    expect(result.warnings[0]).toContain("ambiguous")
+    expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
+  })
+
+  test("does not use provider IDs as metadata matching input", async () => {
+    const match = await findModelsDevModelForEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "anthropic",
+      modelID: "gpt-5",
+      options: { data },
+    })
+
+    expect(match?.providerID).toBe("openai")
+    expect(match?.modelID).toBe("gpt-5")
   })
 
   test("converts metadata to schema-safe model draft", () => {

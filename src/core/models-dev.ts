@@ -33,13 +33,18 @@ export type ModelsDevOptions = {
   data?: ModelsDevData
 }
 
-export type ModelsDevMatchConfidence = "exact-provider" | "candidate-provider" | "global-unique" | "global-candidate"
+export type ModelsDevMatchConfidence = "candidate-provider" | "alias-candidate" | "global-unique" | "global-alias-unique"
 
 export type ModelsDevMatch = {
   providerID: string
   modelID: string
   model: ModelsDevModel
   confidence: ModelsDevMatchConfidence
+}
+
+export type ModelsDevLookupResult = {
+  match?: ModelsDevMatch
+  warnings: string[]
 }
 
 let cachedData: ModelsDevData | undefined
@@ -70,16 +75,125 @@ export async function findModelsDevModel(modelRef: string, options: ModelsDevOpt
   return data[providerID]?.models?.[modelID]
 }
 
-function providerCandidates(kind: EndpointKind, providerID: string) {
+function endpointProviderCandidates(kind: EndpointKind) {
   const candidates =
     kind === "openai-responses"
-      ? [providerID, "openai"]
+      ? ["openai"]
       : kind === "openai-compatible"
-        ? [providerID, "openai"]
+        ? ["openai"]
         : kind === "anthropic-compatible"
-          ? [providerID, "anthropic"]
-          : [providerID, "google", "gemini"]
-  return Array.from(new Set(candidates.filter(Boolean)))
+          ? ["anthropic"]
+          : ["google", "gemini"]
+  return Array.from(new Set(candidates))
+}
+
+function normalizeModelName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^[^:/]+:\s+/, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/(^|[-/])([a-z]+)(?=\d+\.)/g, "$1$2-")
+    .replace(/(^|[-/])gpt-(\d+)-(\d+)(?=$|[-/])/g, "$1gpt-$2.$3")
+    .replace(/-+/g, "-")
+}
+
+function modelNameVariants(value: string) {
+  const variants = new Set([value])
+  for (const candidate of Array.from(variants)) {
+    variants.add(candidate.replace(/(^|[-/])([a-z]+)(?=\d)/g, "$1$2-"))
+    variants.add(candidate.replace(/(^|[-/])([a-z]+)-(?=\d)/g, "$1$2"))
+    variants.add(candidate.replace(/(^|[-/])([a-z]+(?:-[a-z]+)*)-(\d{1,2})-(\d{1,2})(?=$|[-/])/g, "$1$2-$3.$4"))
+    variants.add(candidate.replace(/(^|[-/])([a-z]+(?:-[a-z]+)*)-v-?(\d{1,2})-(\d{1,2})(?=$|[-/])/g, "$1$2-v$3.$4"))
+  }
+  return Array.from(variants)
+}
+
+function normalizedModelAliases(value: string) {
+  const normalized = [normalizeModelName(value), normalizeModelName(value.split("/").at(-1) ?? value)]
+  return Array.from(new Set(normalized.flatMap(modelNameVariants))).filter(Boolean)
+}
+
+function modelAliases(modelID: string, model: ModelsDevModel) {
+  return Array.from(new Set([
+    ...normalizedModelAliases(modelID),
+    ...normalizedModelAliases(model.id),
+  ])).filter(Boolean)
+}
+
+function findAliasModels(provider: ModelsDevProvider | undefined, modelID: string) {
+  if (!provider) return []
+  const inputAliases = normalizedModelAliases(modelID)
+  return Object.entries(provider.models)
+    .filter(([candidateID, model]) => modelAliases(candidateID, model).some((alias) => inputAliases.includes(alias)))
+    .map(([candidateID, model]) => ({ modelID: candidateID, model }))
+}
+
+function describeMatches(matches: ModelsDevMatch[]) {
+  const shown = matches.slice(0, 8).map((match) => `${match.providerID}/${match.modelID}`)
+  if (matches.length > shown.length) shown.push(`... (+${matches.length - shown.length} more)`)
+  return shown.join(", ")
+}
+
+function ambiguousLookup(modelID: string, matches: ModelsDevMatch[]): ModelsDevLookupResult {
+  return {
+    warnings: [`models.dev metadata is ambiguous for "${modelID}" (${describeMatches(matches)}); no model limit or capabilities were guessed.`],
+  }
+}
+
+function missingLookup(modelID: string): ModelsDevLookupResult {
+  return { warnings: [`models.dev metadata was not found for "${modelID}"; no model limit or capabilities were guessed.`] }
+}
+
+function singleMatch(modelID: string, matches: ModelsDevMatch[]): ModelsDevLookupResult | undefined {
+  if (matches.length === 0) return undefined
+  if (matches.length === 1) return { match: matches[0], warnings: [] }
+  return ambiguousLookup(modelID, matches)
+}
+
+export async function lookupModelsDevModelForEndpoint(input: {
+  endpointKind: EndpointKind
+  providerID: string
+  modelID: string
+  options?: ModelsDevOptions
+}): Promise<ModelsDevLookupResult> {
+  const data = await loadModelsDev(input.options)
+  const candidates = endpointProviderCandidates(input.endpointKind)
+
+  const candidateMatches = candidates.flatMap((providerID) => {
+    const model = data[providerID]?.models?.[input.modelID]
+    return model ? [{ providerID, modelID: input.modelID, model, confidence: "candidate-provider" as const }] : []
+  })
+  const candidateMatch = singleMatch(input.modelID, candidateMatches)
+  if (candidateMatch) return candidateMatch
+
+  const candidateAliases = candidates.flatMap((providerID) => findAliasModels(data[providerID], input.modelID).map((match) => ({
+    providerID,
+    modelID: match.modelID,
+    model: match.model,
+    confidence: "alias-candidate" as const,
+  })))
+  const candidateAlias = singleMatch(input.modelID, candidateAliases)
+  if (candidateAlias) return candidateAlias
+
+  const matches: ModelsDevMatch[] = []
+  for (const [providerID, provider] of Object.entries(data)) {
+    const model = provider.models[input.modelID]
+    if (model) matches.push({ providerID, modelID: input.modelID, model, confidence: "global-unique" })
+  }
+  const globalExact = singleMatch(input.modelID, matches)
+  if (globalExact) return globalExact
+
+  const aliasMatches: ModelsDevMatch[] = []
+  for (const [providerID, provider] of Object.entries(data)) {
+    for (const match of findAliasModels(provider, input.modelID)) {
+      aliasMatches.push({ providerID, modelID: match.modelID, model: match.model, confidence: "global-alias-unique" })
+    }
+  }
+  const globalAlias = singleMatch(input.modelID, aliasMatches)
+  if (globalAlias) return globalAlias
+
+  return missingLookup(input.modelID)
 }
 
 export async function findModelsDevModelForEndpoint(input: {
@@ -88,29 +202,7 @@ export async function findModelsDevModelForEndpoint(input: {
   modelID: string
   options?: ModelsDevOptions
 }): Promise<ModelsDevMatch | undefined> {
-  const data = await loadModelsDev(input.options)
-  const candidates = providerCandidates(input.endpointKind, input.providerID)
-
-  const exact = data[input.providerID]?.models?.[input.modelID]
-  if (exact) return { providerID: input.providerID, modelID: input.modelID, model: exact, confidence: "exact-provider" }
-
-  for (const providerID of candidates) {
-    if (providerID === input.providerID) continue
-    const model = data[providerID]?.models?.[input.modelID]
-    if (model) return { providerID, modelID: input.modelID, model, confidence: "candidate-provider" }
-  }
-
-  const matches: ModelsDevMatch[] = []
-  for (const [providerID, provider] of Object.entries(data)) {
-    const model = provider.models[input.modelID]
-    if (model) matches.push({ providerID, modelID: input.modelID, model, confidence: "global-unique" })
-  }
-  if (matches.length === 1) return matches[0]
-  for (const providerID of candidates) {
-    const match = matches.find((candidate) => candidate.providerID === providerID)
-    if (match) return { ...match, confidence: "global-candidate" }
-  }
-  return undefined
+  return (await lookupModelsDevModelForEndpoint(input)).match
 }
 
 export function modelsDevToModelDraft(model: ModelsDevModel): ModelDraft {

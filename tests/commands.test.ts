@@ -140,6 +140,39 @@ describe("commands", () => {
     await expect(readFile(expandHomePath(defaultSecretFilePath("custom")), "utf8")).resolves.toBe("sk-gemini-test")
   })
 
+  test("add provider reports missing metadata warnings", async () => {
+    const filePath = await tempFile()
+
+    await addProviderCommand("custom", {
+      configPath: filePath,
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
+      model: ["unknown-model"],
+      validate: valid,
+    })
+
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("no model limit or capabilities were guessed"))).toBe(true)
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.models["unknown-model"].limit).toBeUndefined()
+  })
+
+  test("add provider includes metadata warnings in JSON output", async () => {
+    const filePath = await tempFile()
+
+    await addProviderCommand("custom", {
+      configPath: filePath,
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
+      model: ["unknown-model"],
+      dryRun: true,
+      json: true,
+      validate: valid,
+    })
+
+    const output = JSON.parse(log.mock.calls[0]?.[0] as string)
+    expect(output.warnings[0]).toContain("no model limit or capabilities were guessed")
+  })
+
   test("add provider requires api key content", async () => {
     const filePath = await tempFile()
 

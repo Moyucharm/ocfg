@@ -1,10 +1,4 @@
-import type { EndpointKind, ModelDraft } from "../core/types.js"
-
-export type ModelFamilyTemplate = {
-  family: string
-  match: RegExp
-  model: ModelDraft
-}
+import type { EndpointKind } from "../core/types.js"
 
 export type EndpointTemplate = {
   kind: EndpointKind
@@ -12,6 +6,4 @@ export type EndpointTemplate = {
   recommendedNpm: string
   baseURLHint?: string
   supportsModelProbe: boolean
-  genericModel: ModelDraft
-  families: ModelFamilyTemplate[]
 }

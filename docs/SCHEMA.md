@@ -176,23 +176,15 @@ Probe strategy:
 GET {baseURL}/models
 ```
 
-Generic model fallback:
+Unknown model fallback:
 
 ```jsonc
 {
-  "name": "Custom Model",
-  "limit": {
-    "context": 128000,
-    "output": 8192
-  },
-  "modalities": {
-    "input": ["text"],
-    "output": ["text"]
-  },
-  "tool_call": true,
-  "temperature": true
+  "name": "Custom Model"
 }
 ```
+
+Unknown compatible models intentionally omit `limit` and capability flags instead of guessing. Add `limit`, `reasoning`, `tool_call`, `temperature`, modalities, or variants only from an unambiguous models.dev match or explicit user input. Future/custom aliases such as `gpt5.5-*` must not be mapped to GPT-5 limits unless metadata confirms that exact model name. CLI and TUI flows surface a warning when metadata is missing or ambiguous.
 
 ### OpenAI Responses
 
@@ -325,23 +317,25 @@ Plaintext keys must require explicit advanced confirmation and should produce a 
         "setCacheKey": true
       },
       "models": {
-        "gpt-compatible": {
+        "gpt-5": {
           "name": "GPT Compatible",
           "limit": {
-            "context": 128000,
-            "output": 8192
+            "context": 400000,
+            "output": 128000
           },
           "modalities": {
             "input": ["text"],
             "output": ["text"]
           },
+          "attachment": true,
+          "reasoning": true,
           "tool_call": true,
-          "temperature": true
+          "temperature": false
         }
       }
     }
   },
-  "model": "custom-openai/gpt-compatible"
+  "model": "custom-openai/gpt-5"
 }
 ```
 

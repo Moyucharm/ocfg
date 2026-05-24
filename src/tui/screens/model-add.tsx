@@ -7,11 +7,11 @@ import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { configuredModelIDs, selectableDetectedModels, splitExistingModelIDs } from "../model-add.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
 import { inferEndpointKindFromProvider, providerApiKeyRef, providerBaseURL, resolveProviderApiKey } from "../provider-metadata.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodeNotice, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "choose" | "input" | "detecting" | "select" | "review" | "loading"
 
@@ -58,14 +58,15 @@ export function ModelAddScreen(props: {
       return
     }
     setError(undefined)
-    setMetadataWarnings(alreadyAdded.length > 0 ? [t("model.skippedAlready", { models: alreadyAdded.join(", ") })] : [])
+    const warnings = alreadyAdded.length > 0 ? [t("model.skippedAlready", { models: alreadyAdded.join(", ") })] : []
+    setMetadataWarnings(warnings)
     setStep("loading")
     try {
       let modelsDevData
       try {
         modelsDevData = await loadModelsDev()
       } catch (caught) {
-        setMetadataWarnings([t("model.modelsDevUnavailable", { message: caught instanceof Error ? caught.message : String(caught) })])
+        warnings.push(t("model.modelsDevUnavailable", { message: caught instanceof Error ? caught.message : String(caught) }))
         modelsDevData = {}
       }
       const currentName = typeof props.provider.name === "string" ? props.provider.name : props.providerID
@@ -79,6 +80,7 @@ export function ModelAddScreen(props: {
         modelsDev: { data: modelsDevData },
       })
       setGenerated(result)
+      setMetadataWarnings([...warnings, ...result.warnings])
       setSelected(Object.keys(result.provider.models).length)
       setStep("review")
     } catch (caught) {
@@ -197,8 +199,7 @@ export function ModelAddScreen(props: {
       if (key.backspace || key.delete) setModelText((current) => current.slice(0, -1))
       else if (matchesKeybind("confirm", input, key, keybinds)) void resolveModels()
       else {
-        const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-        if (printable && !printable.startsWith("[<")) setModelText((current) => `${current}${printable}`)
+        setModelText((current) => appendPrintableInput(current, input))
       }
       return
     }
@@ -267,8 +268,8 @@ export function ModelAddScreen(props: {
     }
     if (matchesKeybind("diff", input, key, keybinds) && step === "review" && generated) void props.onReviewDiff(generated)
     if (step === "select") {
-      const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-      if (printable && !printable.startsWith("[<")) {
+      const printable = printableInput(input)
+      if (printable) {
         setQuery((current) => `${current}${printable}`)
         setSelected(0)
       }
@@ -279,7 +280,7 @@ export function ModelAddScreen(props: {
   if (step === "detecting") return <Text>{t("model.detecting", { baseURL: baseURL ?? "" })}</Text>
   if (step === "loading") return <Text>{t("model.resolving")}</Text>
 
-  return (
+  const menu = (
     <OpenCodeMenu
       title={step === "choose" ? t("model.title.add") : step === "select" ? t("model.title.select") : t("model.title.resolved")}
       query={menuQuery()}
@@ -287,7 +288,14 @@ export function ModelAddScreen(props: {
       selectedIndex={selected}
       showSearch={step === "select"}
       footer={step === "select" ? [`${t("common.toggle")}\tspace`, `${t("common.all")}\tctrl+a`, `${t("common.manual")}\tctrl+m`, `${t("common.retry")}\tctrl+r`, `${t("common.continue")}\tenter`] : step === "review" ? [`${t("common.diff")}\td`, `${t("common.back")}\tb`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]}
-      emptyText={metadataWarnings[0] ?? error}
+      emptyText={error}
     />
+  )
+  if (metadataWarnings.length === 0) return menu
+  return (
+    <>
+      {metadataWarnings.map((warning, index) => <OpenCodeNotice key={`${index}-${warning}`} tone="warning">{warning}</OpenCodeNotice>)}
+      {menu}
+    </>
   )
 }

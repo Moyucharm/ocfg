@@ -16,8 +16,4 @@ export function getEndpointTemplate(kind: EndpointKind): EndpointTemplate {
   return endpointTemplates[kind]
 }
 
-export function matchFamilyTemplate(template: EndpointTemplate, modelID: string) {
-  return template.families.find((family) => family.match.test(modelID))
-}
-
-export type { EndpointTemplate, ModelFamilyTemplate } from "./types.js"
+export type { EndpointTemplate } from "./types.js"

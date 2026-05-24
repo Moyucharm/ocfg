@@ -22,7 +22,7 @@ const draft: ProviderDraft = {
   models: {
     model: {
       name: "Model",
-      limit: { context: 128000, output: 8192 },
+      limit: { context: 128000, output: 32000 },
     },
   },
 }

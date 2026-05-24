@@ -1,12 +1,10 @@
 import type { EndpointKind, ModelDraft } from "./types.js"
-import { findModelsDevModelForEndpoint, modelsDevToModelDraft, type ModelsDevMatch, type ModelsDevOptions } from "./models-dev.js"
-import { getEndpointTemplate, matchFamilyTemplate } from "../templates/index.js"
+import { lookupModelsDevModelForEndpoint, modelsDevToModelDraft, type ModelsDevMatch, type ModelsDevOptions } from "./models-dev.js"
 
-export type ResolutionConfidence = "exact" | "family" | "generic" | "manual"
+export type ResolutionConfidence = "exact" | "generic" | "manual"
 
 export type ModelMetadataSource =
   | { type: "models.dev"; providerID: string; modelID: string; confidence: ModelsDevMatch["confidence"]; fields: string[] }
-  | { type: "template"; template: "family" | "generic"; family?: string; fields: string[] }
   | { type: "manual"; fields: string[] }
 
 export type ResolvedModel = {
@@ -69,26 +67,20 @@ export async function resolveModelTemplate(input: {
   manual?: ModelDraft
   modelsDev?: ModelsDevOptions
 }): Promise<ResolvedModel> {
-  const template = getEndpointTemplate(input.endpointKind)
   const sources: ModelMetadataSource[] = []
   const warnings: string[] = []
-  let model: ModelDraft = mergeModel({}, template.genericModel)
-  sources.push({ type: "template", template: "generic", fields: modelFields(template.genericModel) })
-
-  const family = matchFamilyTemplate(template, input.modelID)
-  if (family) {
-    model = mergeModel(model, family.model)
-    sources.push({ type: "template", template: "family", family: family.family, fields: modelFields(family.model) })
-  }
+  let model: ModelDraft = {}
 
   let modelsDevMatch: ModelsDevMatch | undefined
   try {
-    modelsDevMatch = await findModelsDevModelForEndpoint({
+    const lookup = await lookupModelsDevModelForEndpoint({
       endpointKind: input.endpointKind,
       providerID: input.providerID,
       modelID: input.modelID,
       options: input.modelsDev,
     })
+    modelsDevMatch = lookup.match
+    warnings.push(...lookup.warnings)
   } catch (caught) {
     warnings.push(`models.dev metadata unavailable: ${caught instanceof Error ? caught.message : String(caught)}`)
   }
@@ -110,17 +102,15 @@ export async function resolveModelTemplate(input: {
   }
 
   const hasModelsDev = sources.some((source) => source.type === "models.dev")
-  const hasFamily = sources.some((source) => source.type === "template" && source.template === "family")
   const confidence = sources.some((source) => source.type === "manual")
     ? "manual"
     : hasModelsDev
       ? "exact"
-      : hasFamily
-        ? "family"
-        : "generic"
+      : "generic"
+
+  if (!model.name) model.name = displayNameFromModelID(input.modelID)
 
   const needsConfirmation = !hasModelsDev || warnings.length > 0
-  if (needsConfirmation) model.name = displayNameFromModelID(input.modelID)
 
   return { model, confidence, sources, needsConfirmation, warnings }
 }

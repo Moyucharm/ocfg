@@ -27,13 +27,37 @@ const configSchema = {
 const modelSchema = { $id: "https://models.dev/model-schema.json", $defs: { Model: { type: "string" } } }
 
 const cases: Array<{ kind: EndpointKind; providerID: string; modelID: string; npm: string }> = [
-  { kind: "openai-compatible", providerID: "custom-openai", modelID: "gpt-5-compatible", npm: "@ai-sdk/openai-compatible" },
+  { kind: "openai-compatible", providerID: "custom-openai", modelID: "gpt-5", npm: "@ai-sdk/openai-compatible" },
   { kind: "openai-responses", providerID: "openai", modelID: "gpt-5", npm: "@ai-sdk/openai" },
   { kind: "anthropic-compatible", providerID: "custom-claude", modelID: "claude-sonnet-4-5", npm: "@ai-sdk/anthropic" },
   { kind: "gemini-compatible", providerID: "custom-gemini", modelID: "gemini-2.5-pro", npm: "@ai-sdk/google" },
 ]
 
 describe("provider generator", () => {
+  const modelData = {
+    openai: {
+      id: "openai",
+      name: "OpenAI",
+      models: {
+        "gpt-5": { id: "gpt-5", name: "GPT-5", limit: { context: 400000, output: 128000 } },
+      },
+    },
+    anthropic: {
+      id: "anthropic",
+      name: "Anthropic",
+      models: {
+        "claude-sonnet-4-5": { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", limit: { context: 200000, output: 64000 } },
+      },
+    },
+    google: {
+      id: "google",
+      name: "Google",
+      models: {
+        "gemini-2.5-pro": { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", limit: { context: 1000000, output: 65536 } },
+      },
+    },
+  }
+
   test.each(cases)("generates valid provider config for $kind", async ({ kind, providerID, modelID, npm }) => {
     const result = await createProviderDraftFromEndpoint({
       endpointKind: kind,
@@ -42,7 +66,7 @@ describe("provider generator", () => {
       baseURL: "https://example.com/v1",
       apiKey: { type: "env", name: "CUSTOM_API_KEY" },
       modelIDs: [modelID],
-      modelsDev: { data: {} },
+      modelsDev: { data: modelData as any },
     })
 
     const config = {
@@ -62,6 +86,7 @@ describe("provider generator", () => {
     expect(JSON.stringify(config)).not.toContain("vision")
     expect(config.provider[providerID].models[modelID]).toBeDefined()
     expect(config.provider[providerID].models[modelID].limit).toBeDefined()
+    expect(result.warnings).toEqual([])
     const validation = await validateConfig(config, { schema: configSchema, modelSchema })
     expect(validation.valid).toBe(true)
   })
@@ -86,14 +111,114 @@ describe("provider generator", () => {
       providerID: "custom-openai",
       name: "Custom OpenAI",
       apiKey: { type: "file", path: "~/.secrets/custom-openai" },
-      modelIDs: ["gpt-5.2", "gpt-5.3-codex", "gpt-5.4"],
+      modelIDs: ["gpt-5", "gpt-5-codex", "gpt5.5"],
       modelsDev: { data: {} },
     })
 
-    expect(result.provider.models["gpt-5.2"].name).toBe("GPT-5.2")
-    expect(result.provider.models["gpt-5.3-codex"].name).toBe("GPT-5.3 Codex")
-    expect(result.provider.models["gpt-5.4"].name).toBe("GPT-5.4")
-    expect(Object.keys(result.provider.models["gpt-5.4"].variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
+    expect(result.provider.models["gpt-5"].name).toBe("GPT-5")
+    expect(result.provider.models["gpt-5-codex"].name).toBe("GPT-5 Codex")
+    expect(result.provider.models["gpt5.5"].name).toBe("GPT-5.5")
+    expect(result.provider.models["gpt-5-codex"].variants).toBeUndefined()
+    expect(result.provider.models["gpt5.5"].variants).toBeUndefined()
+  })
+
+  test("uses models.dev metadata for normalized model names", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "123456",
+      name: "Custom",
+      apiKey: { type: "file", path: "~/.secrets/shenye" },
+      modelIDs: ["gpt5.5"],
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From Models.dev",
+                limit: { context: 1050000, input: 922000, output: 128000 },
+                modalities: { input: ["text", "image"], output: ["text"] },
+                reasoning: true,
+                tool_call: true,
+                temperature: false,
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["gpt5.5"]).toBe(false)
+    expect(result.provider.models["gpt5.5"].name).toBe("GPT-5.5 From Models.dev")
+    expect(result.provider.models["gpt5.5"].limit).toEqual({ context: 1050000, input: 922000, output: 128000 })
+  })
+
+  test("does not use provider suffixes as model aliases", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "shenye",
+      name: "Shenye",
+      apiKey: { type: "file", path: "~/.secrets/shenye" },
+      modelIDs: ["gpt5.5-shenye"],
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From Models.dev",
+                limit: { context: 1050000, input: 922000, output: 128000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["gpt5.5-shenye"]).toBe(true)
+    expect(result.provider.models["gpt5.5-shenye"].limit).toBeUndefined()
+    expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
+  })
+
+  test("does not write guessed token limits for unknown models", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      name: "Custom",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: ["unknown-model"],
+      modelsDev: { data: {} },
+    })
+
+    expect(result.provider.models["unknown-model"].limit).toBeUndefined()
+    expect(result.provider.models["unknown-model"].reasoning).toBeUndefined()
+    expect(result.provider.models["unknown-model"].tool_call).toBeUndefined()
+    expect(result.provider.models["unknown-model"].temperature).toBeUndefined()
+    expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
+  })
+
+  test("does not pick ambiguous metadata", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      name: "Custom",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: ["shared-model"],
+      modelsDev: {
+        data: {
+          first: { id: "first", name: "First", models: { "shared-model": { id: "shared-model", name: "First Shared", limit: { context: 1, output: 1 } } } },
+          second: { id: "second", name: "Second", models: { "shared-model": { id: "shared-model", name: "Second Shared", limit: { context: 2, output: 2 } } } },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["shared-model"]).toBe(true)
+    expect(result.provider.models["shared-model"].limit).toBeUndefined()
+    expect(result.warnings[0]).toContain("ambiguous")
   })
 
   test("uses models.dev metadata for custom provider model capabilities", async () => {
