@@ -47,10 +47,6 @@ export type PromptCommandOptions = MutatingCommandOptions & {
   rules?: boolean
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
 function resolveUserPath(filePath: string, options: ConfigCommandOptions) {
   const home = options.home ?? process.env.HOME
   const expanded = home && (filePath === "~" || filePath.startsWith("~/")) ? path.join(home, filePath === "~" ? "" : filePath.slice(2)) : filePath
@@ -138,6 +134,24 @@ function promptConfigText(document: Awaited<ReturnType<typeof loadConfigForComma
   return changes.length > 0 ? applyConfigEdits(document, changes) : document.text || "{}\n"
 }
 
+async function preparePromptSelection(
+  document: Awaited<ReturnType<typeof loadConfigForCommand>>["document"],
+  target: Awaited<ReturnType<typeof loadConfigForCommand>>["target"],
+  fileName: string,
+  options: PromptCommandOptions,
+) {
+  const nextConfig = options.globalInstructions
+    ? addInstructionRef(document.data, instructionRefForPromptFile(fileName, target))
+    : setAgentPrompt(document.data, options.agent!, promptRefForFile(fileName, target), {
+      description: `Uses ${fileName}`,
+      mode: "primary",
+    })
+  const nextText = promptConfigText(document, nextConfig)
+  const validation = await validateForWrite(nextConfig, options.validate)
+  const validatedOptions = { ...options, validate: () => validation }
+  return { nextConfig, nextText, validation, validatedOptions }
+}
+
 export async function listPromptsCommand(options: ConfigCommandOptions) {
   const { target, document } = await loadConfigForCommand(options)
   const rules = await listRuleFiles(target)
@@ -190,19 +204,12 @@ export async function addPromptCommand(name: string, options: PromptCommandOptio
   }
 
   const fileName = normalizePromptFileName(name)
-  const nextConfig = options.globalInstructions
-    ? addInstructionRef(document.data, instructionRefForPromptFile(fileName, target))
-    : setAgentPrompt(document.data, options.agent!, promptRefForFile(fileName, target), {
-      description: `Uses ${fileName}`,
-      mode: "primary",
-    })
-  const nextText = promptConfigText(document, nextConfig)
-  const validation = await validateForWrite(nextConfig, options.validate)
-  if (!validation.valid) return writeMutation({ document, options: { ...options, validate: () => validation }, nextConfig, nextText })
+  const { nextConfig, nextText, validation, validatedOptions } = await preparePromptSelection(document, target, fileName, options)
+  if (!validation.valid) return writeMutation({ document, options: validatedOptions, nextConfig, nextText })
 
   const promptResult = await writePromptFileSafely(target, fileName, content, { dryRun: options.dryRun })
   if (!options.json) printPromptWriteResult(promptResult)
-  return writeMutation({ document, options: { ...options, validate: () => validation }, nextConfig, nextText })
+  return writeMutation({ document, options: validatedOptions, nextConfig, nextText })
 }
 
 export async function editPromptCommand(name: string, options: PromptCommandOptions) {
@@ -273,17 +280,10 @@ export async function switchPromptCommand(name: string, options: PromptCommandOp
     return result
   }
 
-  const nextConfig = options.globalInstructions
-    ? addInstructionRef(document.data, instructionRefForPromptFile(fileName, target))
-    : setAgentPrompt(document.data, options.agent!, promptRefForFile(fileName, target), {
-      description: `Uses ${fileName}`,
-      mode: "primary",
-    })
-  const nextText = promptConfigText(document, nextConfig)
-  const validation = await validateForWrite(nextConfig, options.validate)
-  if (!validation.valid) return writeMutation({ document, options: { ...options, validate: () => validation }, nextConfig, nextText })
+  const { nextConfig, nextText, validation, validatedOptions } = await preparePromptSelection(document, target, fileName, options)
+  if (!validation.valid) return writeMutation({ document, options: validatedOptions, nextConfig, nextText })
   if (templateID) await installPromptTemplate(target, templateID, { dryRun: options.dryRun, backup: false })
-  return writeMutation({ document, options: { ...options, validate: () => validation }, nextConfig, nextText })
+  return writeMutation({ document, options: validatedOptions, nextConfig, nextText })
 }
 
 export async function editRulesCommand(options: PromptCommandOptions) {
@@ -326,10 +326,4 @@ export async function deletePromptCommand(name: string, options: PromptCommandOp
   const deleteResult = await deletePromptFileSafely(target, fileName, { dryRun: options.dryRun })
   if (!options.json || !shouldWriteConfig) printPromptWriteResult(deleteResult, options.json)
   return deleteResult
-}
-
-export function hasConfiguredPrompt(config: Record<string, unknown>, agentID: string) {
-  const agents = isRecord(config.agent) ? config.agent : {}
-  const agent = agents[agentID]
-  return isRecord(agent) && typeof agent.prompt === "string"
 }

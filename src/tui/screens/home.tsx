@@ -1,19 +1,12 @@
 import React, { useState } from "react"
-import { parseTuiMouseEvent } from "../mouse.js"
-import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { useTuiText } from "../i18n.js"
+import { useOpenCodeMenuInput } from "../menu-input.js"
 import type { TuiAction, TuiConfigSelection } from "../types.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
-import { useTuiInput } from "../input.js"
-
-function itemCount(groups: OpenCodeMenuGroup[]) {
-  return openCodeMenuRows(groups, "").filter((row) => row.kind === "item").length
-}
+import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
 export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (action: TuiAction) => void; onQuit: () => void }) {
   const t = useTuiText()
   const [selected, setSelected] = useState(0)
-  const keybinds = useTuiKeybinds()
   const groups: OpenCodeMenuGroup[] = [
     {
       title: t("home.group.commands"),
@@ -36,27 +29,7 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
     if (item?.kind === "item") props.onAction(item.item.id as TuiAction)
   }
 
-  useTuiInput((input, key) => {
-    const mouse = parseTuiMouseEvent(input)
-    const rows = openCodeMenuRows(groups, "")
-    const count = itemCount(groups)
-    if (mouse) {
-      if (mouse.kind === "wheel") {
-        setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-        return
-      }
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
-    if (matchesKeybind("quit", input, key, keybinds)) props.onQuit()
-    if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
-    if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
-    if (matchesKeybind("confirm", input, key, keybinds)) runSelected()
-  })
+  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: runSelected, onQuit: props.onQuit, wheel: true, mouse: { hasFooter: true } })
 
   return (
     <OpenCodeMenu

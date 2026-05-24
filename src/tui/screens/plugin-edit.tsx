@@ -1,22 +1,13 @@
 import React, { useState } from "react"
+import { isRecord } from "../../core/object-utils.js"
 import type { PluginListItem, PluginOptions } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "options"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 function parseOptions(value: string): PluginOptions {
   let parsed: unknown
@@ -87,7 +78,7 @@ export function PluginEditScreen(props: {
       else if (matchesKeybind("confirm", input, key, keybinds)) saveOptions()
       else {
         setError(undefined)
-        setInputValue((current) => appendInput(current, input))
+        setInputValue((current) => appendPrintableInput(current, input))
       }
       return
     }

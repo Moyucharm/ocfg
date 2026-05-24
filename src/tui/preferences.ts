@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { isRecord } from "../core/object-utils.js"
 import { defaultTuiLanguage, isTuiLanguage, type TuiLanguage } from "./i18n.js"
 import { isTuiThemeName, type TuiThemeName } from "./theme.js"
 import { defaultTuiKeybinds, resolveTuiKeybinds, type TuiKeybindMap } from "./keybinds.js"
@@ -31,10 +32,6 @@ export const defaultTuiPreferences: TuiPreferences = {
   diffStyle: "unified",
   mouse: true,
   language: defaultTuiLanguage,
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function resolveDiffStyle(value: unknown, diagnostics: string[]): TuiDiffStyle {

@@ -1,15 +1,9 @@
 import React, { useState } from "react"
 import { normalizePluginPackage } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { OpenCodePrompt } from "../ui.js"
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 export function PluginAddScreen(props: {
   kind: "npm" | "local"
@@ -40,7 +34,7 @@ export function PluginAddScreen(props: {
     else if (matchesKeybind("confirm", input, key, keybinds)) save()
     else {
       setError(undefined)
-      setValue((current) => appendInput(current, input))
+      setValue((current) => appendPrintableInput(current, input))
     }
   })
 

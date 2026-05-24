@@ -1,3 +1,5 @@
+import { isRecord } from "./object-utils.js"
+
 export class PluginEditorError extends Error {}
 
 export type PluginOptions = Record<string, unknown>
@@ -12,10 +14,6 @@ export type PluginListItem = {
 
 function cloneConfig(config: Record<string, unknown>): Record<string, unknown> {
   return structuredClone(config)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function ensureSchema(config: Record<string, unknown>) {

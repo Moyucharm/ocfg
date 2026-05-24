@@ -2,9 +2,11 @@ import { applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import { recommendedNpmForChannelType } from "../core/channel-types.js"
 import { defaultSecretFilePath } from "../core/secret-file.js"
 import { updateModel, updateProvider } from "../core/provider-editor.js"
+import { isRecord } from "../core/object-utils.js"
 import type { EndpointKind, ModelDraft, ProviderDraft } from "../core/types.js"
 import {
   loadConfigForCommand,
+  parseModelRef,
   parseManagedApiKeyValue,
   parseEndpointKind,
   type ManagedSecretCommandOptions,
@@ -29,10 +31,6 @@ export type EditModelCommandOptions = MutatingCommandOptions & {
   temperature?: boolean
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
 function existingProvider(config: Record<string, unknown>, providerID: string) {
   const providerMap = config.provider
   const provider = isRecord(providerMap) ? providerMap[providerID] : undefined
@@ -46,12 +44,6 @@ function existingModel(config: Record<string, unknown>, providerID: string, mode
   const model = isRecord(models) ? models[modelID] : undefined
   if (!isRecord(model)) throw new Error(`Model "${providerID}/${modelID}" does not exist`)
   return model
-}
-
-function parseModelRef(ref: string) {
-  const slash = ref.indexOf("/")
-  if (slash <= 0 || slash === ref.length - 1) throw new Error("Model ref must use provider_id/model_id format")
-  return { providerID: ref.slice(0, slash), modelID: ref.slice(slash + 1) }
 }
 
 function hasSecretOption(options: EditProviderCommandOptions) {

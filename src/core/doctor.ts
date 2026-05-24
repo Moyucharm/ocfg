@@ -1,13 +1,10 @@
 import type { ConfigDocument, Diagnostic } from "./types.js"
 import { getEndpointTemplate } from "../templates/index.js"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
+import { isRecord } from "./object-utils.js"
+import { looksLikeSecret } from "./secret-strategy.js"
 
 function looksLikePlaintextApiKey(value: string) {
-  if (value.startsWith("{env:") || value.startsWith("{file:")) return false
-  return /^(sk-|sk_|AIza|xai-|claude-|[A-Za-z0-9_-]{32,})/.test(value)
+  return looksLikeSecret(value)
 }
 
 function providerModels(config: Record<string, unknown>, providerID: string): Record<string, unknown> | undefined {

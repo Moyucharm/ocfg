@@ -63,6 +63,12 @@ export function parseEndpointKind(value: string): EndpointKind {
   throw new Error(`Invalid endpoint kind "${value}"`)
 }
 
+export function parseModelRef(ref: string) {
+  const slash = ref.indexOf("/")
+  if (slash <= 0 || slash === ref.length - 1) throw new Error("Model ref must use provider_id/model_id format")
+  return { providerID: ref.slice(0, slash), modelID: ref.slice(slash + 1) }
+}
+
 export function parseManagedApiKeyValue(options: ManagedSecretCommandOptions): string {
   const value = options.apiKey?.trim()
   if (!value) throw new Error("--api-key is required")
@@ -82,6 +88,7 @@ export async function writeMutation(input: {
   options: MutatingCommandOptions
   nextConfig: Record<string, unknown>
   nextText: string
+  warnings?: string[]
   secretFile?: {
     path: string
     value: string
@@ -102,16 +109,17 @@ export async function writeMutation(input: {
       validate: () => validation,
     })
     if (result.diagnostics.length > 0 && secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
-    printWriteResult(result, input.options.json)
+    const output = input.warnings && input.warnings.length > 0 ? { ...result, warnings: input.warnings } : result
+    printWriteResult(output, input.options.json)
     setExitCodeForDiagnostics(result.diagnostics)
-    return result
+    return output
   } catch (caught) {
     if (secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
     throw caught
   }
 }
 
-export function printWriteResult(result: WriteConfigSafelyResult, json = false) {
+export function printWriteResult(result: WriteConfigSafelyResult & { warnings?: string[] }, json = false) {
   if (json) {
     console.log(JSON.stringify(result, null, 2))
     return
@@ -119,17 +127,20 @@ export function printWriteResult(result: WriteConfigSafelyResult, json = false) 
 
   if (result.diagnostics.length > 0) {
     printDiagnostics(result.diagnostics)
+    for (const warning of result.warnings ?? []) console.warn(`Warning: ${warning}`)
     return
   }
 
   if (result.dryRun) {
     console.log(`Dry run for ${result.targetPath}`)
     console.log(result.diff)
+    for (const warning of result.warnings ?? []) console.warn(`Warning: ${warning}`)
     return
   }
 
   console.log(`Wrote ${result.targetPath}`)
   if (result.backupPath) console.log(`Backup: ${result.backupPath}`)
+  for (const warning of result.warnings ?? []) console.warn(`Warning: ${warning}`)
 }
 
 export function failCommand(message: string, json = false): never {

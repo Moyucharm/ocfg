@@ -1,4 +1,5 @@
 import { applyConfigEdit } from "../core/jsonc-editor.js"
+import { isRecord } from "../core/object-utils.js"
 import { setDefaultModel, setSmallModel } from "../core/provider-editor.js"
 import type { ConfigDocument } from "../core/types.js"
 
@@ -12,10 +13,6 @@ export type DefaultModelOption = {
   modelName?: string
   label: string
   description: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function displayName(value: unknown) {

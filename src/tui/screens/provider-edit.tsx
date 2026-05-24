@@ -4,7 +4,7 @@ import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { ProviderFlowDraft } from "../types.js"
@@ -14,12 +14,6 @@ type Step = "endpoint" | "provider-id" | "name" | "base-url" | "api-key" | "cach
 
 function defaultCache(kind: ProviderFlowDraft["endpointKind"]) {
   return kind === "openai-compatible" || kind === "anthropic-compatible"
-}
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
 }
 
 export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraft) => void; onBack: () => void }) {
@@ -114,7 +108,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       }
       if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendInput(current, input))
+      else setInputValue((current) => appendPrintableInput(current, input))
       return
     }
 
@@ -139,8 +133,8 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
     if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
     if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
     if (matchesKeybind("confirm", input, key, keybinds)) runSelect()
-    const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-    if (printable && !printable.startsWith("[<") && !matchesKeybind("confirm", input, key, keybinds)) {
+    const printable = printableInput(input)
+    if (printable && !matchesKeybind("confirm", input, key, keybinds)) {
       setQuery((current) => `${current}${printable}`)
       setSelected(0)
     }

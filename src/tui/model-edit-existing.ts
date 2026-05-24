@@ -1,3 +1,4 @@
+import { isRecord } from "../core/object-utils.js"
 import type { ModelDraft } from "../core/types.js"
 
 export class ModelEditDraftError extends Error {}
@@ -10,10 +11,6 @@ export type ExistingModelEditDraft = {
   toolCall?: boolean
   temperature?: boolean
   attachment?: boolean
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function existingNumber(value: unknown) {

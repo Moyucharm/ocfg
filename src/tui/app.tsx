@@ -67,12 +67,9 @@ import { useMouseCapture } from "./mouse.js"
 import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference } from "./preferences.js"
 import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeFrame, OpenCodeNotice } from "./ui.js"
+import { isRecord } from "../core/object-utils.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
 
 export function App() {
   const { exit } = useApp()

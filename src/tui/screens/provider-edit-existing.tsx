@@ -1,9 +1,10 @@
 import React, { useState } from "react"
 import { channelTypeOptions, channelTypeLabel } from "../../core/channel-types.js"
+import { isRecord } from "../../core/object-utils.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import type { EndpointKind } from "../../core/types.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
@@ -12,16 +13,6 @@ import { maskSecret, menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, Ope
 
 type Mode = "menu" | "name" | "base-url" | "api-key" | "channel-type" | "cache"
 type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 function optionValue(provider: Record<string, unknown>, key: string) {
   const options = isRecord(provider.options) ? provider.options : {}
@@ -48,7 +39,6 @@ export function ProviderEditExistingScreen(props: {
   const [selected, setSelected] = useState(0)
   const [query, setQuery] = useState("")
   const [channelTypeIndex, setChannelTypeIndex] = useState(defaultKindIndex)
-  const [cacheIndex, setCacheIndex] = useState(cacheValue(props.provider) ? 1 : 0)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
   const [inputValue, setInputValue] = useState("")
   const [error, setError] = useState<string>()
@@ -96,7 +86,6 @@ export function ProviderEditExistingScreen(props: {
       return
     }
     if (field === "cache") {
-      setCacheIndex((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
       setMode("cache")
       setSelected((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
       setQuery("")
@@ -145,7 +134,7 @@ export function ProviderEditExistingScreen(props: {
       }
       if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendInput(current, input))
+      else setInputValue((current) => appendPrintableInput(current, input))
       return
     }
 
@@ -182,8 +171,8 @@ export function ProviderEditExistingScreen(props: {
       if (mode === "menu") runMenuIndex()
       else runSelectIndex()
     }
-    const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-    if (printable && !printable.startsWith("[<") && !matchesKeybind("confirm", input, key, keybinds)) {
+    const printable = printableInput(input)
+    if (printable && !matchesKeybind("confirm", input, key, keybinds)) {
       setQuery((current) => `${current}${printable}`)
       setSelected(0)
     }

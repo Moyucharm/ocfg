@@ -1,4 +1,5 @@
 import React, { createContext, useContext, type ReactNode } from "react"
+import { printableInput } from "./input.js"
 
 export type TuiKeybindAction =
   | "up"
@@ -90,7 +91,7 @@ export function inputBindings(input: string, key: InkInputKey): string[] {
   if (key.tab) bindings.push("tab")
   if (input === " ") bindings.push("space")
 
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
+  const printable = printableInput(input)
   if (printable) {
     const lower = printable.toLowerCase()
     bindings.push(lower)

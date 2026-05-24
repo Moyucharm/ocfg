@@ -1,11 +1,8 @@
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
+import { isRecord } from "../core/object-utils.js"
 import type { EndpointKind, SecretRef } from "../core/types.js"
 import { endpointTemplates } from "../templates/index.js"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
 
 function optionValue(provider: Record<string, unknown>, key: string) {
   const options = isRecord(provider.options) ? provider.options : {}

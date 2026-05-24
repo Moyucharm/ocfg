@@ -226,10 +226,6 @@ function truncateLine(text: string, width: number) {
   return truncateCells(text, width)
 }
 
-function sliceCells(text: string, start: number, end?: number) {
-  return Array.from(text).slice(start, end).join("")
-}
-
 export type OpenCodeTextAreaRow = {
   lineIndex: number
   startColumn: number

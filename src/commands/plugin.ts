@@ -35,6 +35,14 @@ function parsePluginOptionsJSON(value: string | undefined): PluginOptions | unde
   return parsed as PluginOptions
 }
 
+async function writePluginMutation(options: MutatingCommandOptions, mutate: (config: Record<string, unknown>) => Record<string, unknown>) {
+  const { document } = await loadConfigForCommand(options)
+  const nextConfig = mutate(document.data)
+  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+
+  return writeMutation({ document, options, nextConfig, nextText })
+}
+
 export async function listPluginsCommand(options: ConfigCommandOptions) {
   const { target, document } = await loadConfigForCommand(options)
   if (document.diagnostics.length > 0) {
@@ -70,11 +78,7 @@ export async function listPluginsCommand(options: ConfigCommandOptions) {
 }
 
 export async function addPluginCommand(packageName: string, options: PluginOptionsCommandOptions) {
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = addPlugin(document.data, packageName, parsePluginOptionsJSON(options.optionsJson))
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writePluginMutation(options, (config) => addPlugin(config, packageName, parsePluginOptionsJSON(options.optionsJson)))
 }
 
 export async function installPluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -84,11 +88,7 @@ export async function installPluginCommand(plugin: string, options: PluginOption
     return result
   }
 
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = enablePlugin(document.data, plugin, parsePluginOptionsJSON(options.optionsJson))
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writePluginMutation(options, (config) => enablePlugin(config, plugin, parsePluginOptionsJSON(options.optionsJson)))
 }
 
 export async function enablePluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -98,11 +98,7 @@ export async function enablePluginCommand(plugin: string, options: PluginOptions
     return result
   }
 
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = enablePlugin(document.data, plugin, parsePluginOptionsJSON(options.optionsJson))
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writePluginMutation(options, (config) => enablePlugin(config, plugin, parsePluginOptionsJSON(options.optionsJson)))
 }
 
 export async function disablePluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -112,22 +108,14 @@ export async function disablePluginCommand(plugin: string, options: PluginOption
     return result
   }
 
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = disablePlugin(document.data, plugin)
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writePluginMutation(options, (config) => disablePlugin(config, plugin))
 }
 
 export async function editPluginCommand(packageName: string, options: PluginOptionsCommandOptions) {
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = updatePluginOptions(document.data, packageName, {
+  return writePluginMutation(options, (config) => updatePluginOptions(config, packageName, {
     options: parsePluginOptionsJSON(options.optionsJson),
     clearOptions: options.clearOptions,
-  })
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  }))
 }
 
 function printLocalPluginResult(result: LocalPluginMutationResult, json = false) {
@@ -144,9 +132,5 @@ function printLocalPluginResult(result: LocalPluginMutationResult, json = false)
 }
 
 export async function deletePluginCommand(packageName: string, options: MutatingCommandOptions) {
-  const { document } = await loadConfigForCommand(options)
-  const nextConfig = deletePlugin(document.data, packageName)
-  const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
-
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writePluginMutation(options, (config) => deletePlugin(config, packageName))
 }

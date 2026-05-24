@@ -1,3 +1,4 @@
+import { isRecord } from "./object-utils.js"
 import type { ModelDraft, ProviderDraft } from "./types.js"
 
 export class ProviderEditorError extends Error {}
@@ -8,10 +9,6 @@ export type DeleteOptions = {
 
 function cloneConfig(config: Record<string, unknown>): Record<string, unknown> {
   return structuredClone(config)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function ensureSchema(config: Record<string, unknown>) {

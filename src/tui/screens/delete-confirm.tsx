@@ -1,18 +1,12 @@
 import React, { useState } from "react"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { DeleteTargetState } from "../types.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 const actions = ["Confirm", "Cancel"] as const
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 export function DeleteConfirmScreen(props: {
   target: DeleteTargetState
@@ -44,7 +38,7 @@ export function DeleteConfirmScreen(props: {
       if (matchesKeybind("cancel", input, key, keybinds)) return props.onCancel()
       if (key.backspace || key.delete) setToken((current) => current.slice(0, -1))
       else if (matchesKeybind("confirm", input, key, keybinds)) props.onConfirm(token.trim())
-      else setToken((current) => appendInput(current, input))
+      else setToken((current) => appendPrintableInput(current, input))
       return
     }
     const rows = openCodeMenuRows(groups, "")

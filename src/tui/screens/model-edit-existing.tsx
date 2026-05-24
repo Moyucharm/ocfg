@@ -1,6 +1,7 @@
 import React, { useState } from "react"
+import { isRecord } from "../../core/object-utils.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingModelEditDraft } from "../model-edit-existing.js"
@@ -9,16 +10,6 @@ import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt,
 type Field = "name" | "context" | "output" | "reasoning" | "tool-call" | "temperature" | "attachment" | "review"
 type Mode = "menu" | "name" | "context" | "output" | "boolean"
 type BooleanField = "reasoning" | "toolCall" | "temperature" | "attachment"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : ""
@@ -140,7 +131,7 @@ export function ModelEditExistingScreen(props: {
       }
       if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendInput(current, input))
+      else setInputValue((current) => appendPrintableInput(current, input))
       return
     }
     const groups = mode === "boolean" ? booleanGroups : menuGroups

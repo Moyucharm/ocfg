@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { isRecord } from "./object-utils.js"
 import type { ConfigTarget } from "./types.js"
 
 export class PromptManagerError extends Error {}
@@ -150,10 +151,6 @@ Before finishing, run the most relevant check available. If you cannot verify, s
 `,
   },
 ]
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
 
 function timestamp(date: Date) {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")

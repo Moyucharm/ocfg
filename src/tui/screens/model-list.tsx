@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
+import { isRecord } from "../../core/object-utils.js"
 import { readConfig } from "../../core/config-reader.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
@@ -8,10 +9,6 @@ import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import type { TuiConfigSelection } from "../types.js"
 import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
-}
 
 export function ModelListScreen(props: {
   selection: TuiConfigSelection

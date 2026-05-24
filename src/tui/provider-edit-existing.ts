@@ -1,5 +1,6 @@
 import { defaultSecretFilePath } from "../core/secret-file.js"
 import { recommendedNpmForChannelType } from "../core/channel-types.js"
+import { isRecord } from "../core/object-utils.js"
 import type { EndpointKind, ProviderDraft } from "../core/types.js"
 
 export type ExistingProviderEditDraft = {
@@ -8,10 +9,6 @@ export type ExistingProviderEditDraft = {
   baseURL?: string
   apiKeyValue?: string
   setCacheKey?: boolean
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 export function buildExistingProviderEditPatch(

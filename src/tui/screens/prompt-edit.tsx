@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"
 import type { ConfigInstructionItem, PromptFile, PromptTemplate, RuleFile, RuleOverwriteRisk, RuleProfile } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, printableInput, removeLastChar, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { parseTuiMouseEvent } from "../mouse.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
@@ -36,12 +36,6 @@ export type PromptEditState =
 
 type Mode = "menu" | "content" | "agent" | "confirm"
 type PendingAction = "apply-rules" | "switch-rule-profile" | "delete" | "delete-rule" | "delete-rule-profile" | "remove-instruction"
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
 
 function defaultFileName(state: PromptEditState) {
   if (state.kind === "file") return state.prompt.fileName
@@ -279,7 +273,7 @@ export function PromptEditScreen(props: {
       else if (matchesKeybind("confirm", input, key, keybinds)) applyContentEdit(insertNewline(content, contentCursor))
       else {
         setError(undefined)
-        const printable = appendInput("", input)
+        const printable = printableInput(input)
         if (printable) applyContentEdit(insertText(content, contentCursor, printable))
       }
       return
@@ -291,11 +285,11 @@ export function PromptEditScreen(props: {
         setError(undefined)
         return
       }
-      if (key.backspace || key.delete) setAgentID((current) => Array.from(current).slice(0, -1).join(""))
+      if (key.backspace || key.delete) setAgentID(removeLastChar)
       else if (matchesKeybind("confirm", input, key, keybinds)) apply(agentID)
       else {
         setError(undefined)
-        setAgentID((current) => appendInput(current, input))
+        setAgentID((current) => appendPrintableInput(current, input))
       }
       return
     }

@@ -1,23 +1,13 @@
 import React, { useState } from "react"
 import { normalizePromptFileName } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { useTuiInput } from "../input.js"
+import { appendPrintableInput, printableInput, removeLastChar, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
 import { OpenCodePrompt, OpenCodeTextArea } from "../ui.js"
 
 type Step = "name" | "content"
 type PromptAddKind = "prompt" | "rule-profile"
-
-function appendInput(value: string, input: string) {
-  const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
-  if (!printable || printable.startsWith("[<")) return value
-  return `${value}${printable}`
-}
-
-function removeLastChar(value: string) {
-  return Array.from(value).slice(0, -1).join("")
-}
 
 function skeleton(fileName: string) {
   return `# ${fileName.replace(/\.[^.]+$/, "")}
@@ -91,7 +81,7 @@ export function PromptAddScreen(props: {
       else if (matchesKeybind("confirm", input, key, keybinds)) continueToContent()
       else {
         setError(undefined)
-        setName((current) => appendInput(current, input))
+        setName((current) => appendPrintableInput(current, input))
       }
       return
     }
@@ -114,7 +104,7 @@ export function PromptAddScreen(props: {
     else if (matchesKeybind("confirm", input, key, keybinds)) applyContentEdit(insertNewline(content, contentCursor))
     else {
       setError(undefined)
-      const printable = appendInput("", input)
+      const printable = printableInput(input)
       if (printable) applyContentEdit(insertText(content, contentCursor, printable))
     }
   })
