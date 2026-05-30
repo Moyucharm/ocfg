@@ -1,5 +1,5 @@
 import type { EndpointKind, ModelDraft } from "./types.js"
-import { lookupModelsDevModelForEndpoint, modelsDevToModelDraft, type ModelsDevMatch, type ModelsDevOptions } from "./models-dev.js"
+import { lookupModelsDevModelBySuffix, modelsDevToModelDraft, type ModelsDevMatch, type ModelsDevOptions } from "./models-dev.js"
 
 export type ResolutionConfidence = "exact" | "generic" | "manual"
 
@@ -73,9 +73,7 @@ export async function resolveModelTemplate(input: {
 
   let modelsDevMatch: ModelsDevMatch | undefined
   try {
-    const lookup = await lookupModelsDevModelForEndpoint({
-      endpointKind: input.endpointKind,
-      providerID: input.providerID,
+    const lookup = await lookupModelsDevModelBySuffix({
       modelID: input.modelID,
       options: input.modelsDev,
     })

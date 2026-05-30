@@ -201,7 +201,7 @@ describe("provider generator", () => {
     expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
   })
 
-  test("does not pick ambiguous metadata", async () => {
+  test("uses the first matching metadata when multiple models match", async () => {
     const result = await createProviderDraftFromEndpoint({
       endpointKind: "openai-compatible",
       providerID: "custom",
@@ -216,9 +216,43 @@ describe("provider generator", () => {
       },
     })
 
-    expect(result.modelConfirmations["shared-model"]).toBe(true)
-    expect(result.provider.models["shared-model"].limit).toBeUndefined()
-    expect(result.warnings[0]).toContain("ambiguous")
+    expect(result.modelConfirmations["shared-model"]).toBe(false)
+    expect(result.provider.models["shared-model"].name).toBe("First Shared")
+    expect(result.provider.models["shared-model"].limit).toEqual({ context: 1, output: 1 })
+    expect(result.warnings).toEqual([])
+  })
+
+  test("matches capabilities globally without endpoint provider prefixes", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom-openai-proxy",
+      name: "Custom OpenAI Proxy",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: ["deepseek-v4-flash"],
+      modelsDev: {
+        data: {
+          deepseek: {
+            id: "deepseek",
+            name: "DeepSeek",
+            models: {
+              "deepseek-v4-flash": {
+                id: "deepseek-v4-flash",
+                name: "DeepSeek V4 Flash",
+                limit: { context: 256000, output: 64000 },
+                reasoning: true,
+                tool_call: true,
+                temperature: true,
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["deepseek-v4-flash"]).toBe(false)
+    expect(result.provider.models["deepseek-v4-flash"].name).toBe("DeepSeek V4 Flash")
+    expect(result.provider.models["deepseek-v4-flash"].limit).toEqual({ context: 256000, output: 64000 })
+    expect(result.modelResolutions["deepseek-v4-flash"].sources.find((source) => source.type === "models.dev")?.providerID).toBe("deepseek")
   })
 
   test("uses models.dev metadata for custom provider model capabilities", async () => {

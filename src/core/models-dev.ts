@@ -1,4 +1,4 @@
-import type { EndpointKind, ModelDraft, ModelModality } from "./types.js"
+import type { ModelDraft, ModelModality } from "./types.js"
 
 export type ModelsDevModel = {
   id: string
@@ -33,7 +33,7 @@ export type ModelsDevOptions = {
   data?: ModelsDevData
 }
 
-export type ModelsDevMatchConfidence = "candidate-provider" | "alias-candidate" | "global-unique" | "global-alias-unique"
+export type ModelsDevMatchConfidence = "model-suffix"
 
 export type ModelsDevMatch = {
   providerID: string
@@ -75,18 +75,6 @@ export async function findModelsDevModel(modelRef: string, options: ModelsDevOpt
   return data[providerID]?.models?.[modelID]
 }
 
-function endpointProviderCandidates(kind: EndpointKind) {
-  const candidates =
-    kind === "openai-responses"
-      ? ["openai"]
-      : kind === "openai-compatible"
-        ? ["openai"]
-        : kind === "anthropic-compatible"
-          ? ["anthropic"]
-          : ["google", "gemini"]
-  return Array.from(new Set(candidates))
-}
-
 function normalizeModelName(value: string) {
   return value
     .trim()
@@ -109,8 +97,18 @@ function modelNameVariants(value: string) {
   return Array.from(variants)
 }
 
+function modelNameSuffixes(value: string) {
+  const trimmed = value.trim()
+  const suffixes = new Set([trimmed])
+  const slashSuffix = trimmed.split("/").filter(Boolean).at(-1)
+  const colonSuffix = trimmed.split(":").filter(Boolean).at(-1)?.trim()
+  if (slashSuffix) suffixes.add(slashSuffix)
+  if (colonSuffix) suffixes.add(colonSuffix)
+  return Array.from(suffixes)
+}
+
 function normalizedModelAliases(value: string) {
-  const normalized = [normalizeModelName(value), normalizeModelName(value.split("/").at(-1) ?? value)]
+  const normalized = modelNameSuffixes(value).map(normalizeModelName)
   return Array.from(new Set(normalized.flatMap(modelNameVariants))).filter(Boolean)
 }
 
@@ -125,84 +123,33 @@ function findAliasModels(provider: ModelsDevProvider | undefined, modelID: strin
   if (!provider) return []
   const inputAliases = normalizedModelAliases(modelID)
   return Object.entries(provider.models)
-    .filter(([candidateID, model]) => modelAliases(candidateID, model).some((alias) => inputAliases.includes(alias)))
+    .filter(([candidateID, model]) => modelAliases(candidateID, model).some((alias) => inputAliases.some((inputAlias) => alias.endsWith(inputAlias))))
     .map(([candidateID, model]) => ({ modelID: candidateID, model }))
-}
-
-function describeMatches(matches: ModelsDevMatch[]) {
-  const shown = matches.slice(0, 8).map((match) => `${match.providerID}/${match.modelID}`)
-  if (matches.length > shown.length) shown.push(`... (+${matches.length - shown.length} more)`)
-  return shown.join(", ")
-}
-
-function ambiguousLookup(modelID: string, matches: ModelsDevMatch[]): ModelsDevLookupResult {
-  return {
-    warnings: [`models.dev metadata is ambiguous for "${modelID}" (${describeMatches(matches)}); no model limit or capabilities were guessed.`],
-  }
 }
 
 function missingLookup(modelID: string): ModelsDevLookupResult {
   return { warnings: [`models.dev metadata was not found for "${modelID}"; no model limit or capabilities were guessed.`] }
 }
 
-function singleMatch(modelID: string, matches: ModelsDevMatch[]): ModelsDevLookupResult | undefined {
-  if (matches.length === 0) return undefined
-  if (matches.length === 1) return { match: matches[0], warnings: [] }
-  return ambiguousLookup(modelID, matches)
-}
-
-export async function lookupModelsDevModelForEndpoint(input: {
-  endpointKind: EndpointKind
-  providerID: string
+export async function lookupModelsDevModelBySuffix(input: {
   modelID: string
   options?: ModelsDevOptions
 }): Promise<ModelsDevLookupResult> {
   const data = await loadModelsDev(input.options)
-  const candidates = endpointProviderCandidates(input.endpointKind)
-
-  const candidateMatches = candidates.flatMap((providerID) => {
-    const model = data[providerID]?.models?.[input.modelID]
-    return model ? [{ providerID, modelID: input.modelID, model, confidence: "candidate-provider" as const }] : []
-  })
-  const candidateMatch = singleMatch(input.modelID, candidateMatches)
-  if (candidateMatch) return candidateMatch
-
-  const candidateAliases = candidates.flatMap((providerID) => findAliasModels(data[providerID], input.modelID).map((match) => ({
-    providerID,
-    modelID: match.modelID,
-    model: match.model,
-    confidence: "alias-candidate" as const,
-  })))
-  const candidateAlias = singleMatch(input.modelID, candidateAliases)
-  if (candidateAlias) return candidateAlias
-
-  const matches: ModelsDevMatch[] = []
-  for (const [providerID, provider] of Object.entries(data)) {
-    const model = provider.models[input.modelID]
-    if (model) matches.push({ providerID, modelID: input.modelID, model, confidence: "global-unique" })
-  }
-  const globalExact = singleMatch(input.modelID, matches)
-  if (globalExact) return globalExact
-
-  const aliasMatches: ModelsDevMatch[] = []
   for (const [providerID, provider] of Object.entries(data)) {
     for (const match of findAliasModels(provider, input.modelID)) {
-      aliasMatches.push({ providerID, modelID: match.modelID, model: match.model, confidence: "global-alias-unique" })
+      return { match: { providerID, modelID: match.modelID, model: match.model, confidence: "model-suffix" }, warnings: [] }
     }
   }
-  const globalAlias = singleMatch(input.modelID, aliasMatches)
-  if (globalAlias) return globalAlias
 
   return missingLookup(input.modelID)
 }
 
-export async function findModelsDevModelForEndpoint(input: {
-  endpointKind: EndpointKind
-  providerID: string
+export async function findModelsDevModelBySuffix(input: {
   modelID: string
   options?: ModelsDevOptions
 }): Promise<ModelsDevMatch | undefined> {
-  return (await lookupModelsDevModelForEndpoint(input)).match
+  return (await lookupModelsDevModelBySuffix(input)).match
 }
 
 export function modelsDevToModelDraft(model: ModelsDevModel): ModelDraft {

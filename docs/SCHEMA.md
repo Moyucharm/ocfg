@@ -184,7 +184,7 @@ Unknown model fallback:
 }
 ```
 
-Unknown compatible models intentionally omit `limit` and capability flags instead of guessing. Add `limit`, `reasoning`, `tool_call`, `temperature`, modalities, or variants only from an unambiguous models.dev match or explicit user input. Future/custom aliases such as `gpt5.5-*` must not be mapped to GPT-5 limits unless metadata confirms that exact model name. CLI and TUI flows surface a warning when metadata is missing or ambiguous.
+Unknown compatible models intentionally omit `limit` and capability flags instead of guessing. Add `limit`, `reasoning`, `tool_call`, `temperature`, modalities, or variants only from a models.dev suffix match or explicit user input. The lookup scans all models.dev providers regardless of channel type and uses the first matching model name suffix. Future/custom aliases such as `gpt5.5-*` must not be mapped to GPT-5 limits unless metadata confirms that exact model name. CLI and TUI flows surface a warning when metadata is missing.
 
 ### OpenAI Responses
 

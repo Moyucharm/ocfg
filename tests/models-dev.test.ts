@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { clearModelsDevCache, findModelsDevModel, findModelsDevModelForEndpoint, loadModelsDev, lookupModelsDevModelForEndpoint, modelsDevToModelDraft } from "../src/core/models-dev.js"
+import { clearModelsDevCache, findModelsDevModel, findModelsDevModelBySuffix, loadModelsDev, lookupModelsDevModelBySuffix, modelsDevToModelDraft } from "../src/core/models-dev.js"
 
 function fakeFetch(data: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(data), { status: 200 })) as typeof fetch
@@ -123,36 +123,30 @@ describe("models.dev", () => {
     expect(await findModelsDevModel("missing/model", { data })).toBeUndefined()
   })
 
-  test("finds endpoint provider candidates for custom providers", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-responses",
-      providerID: "custom-openai",
+  test("finds model metadata through global suffix lookup", async () => {
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5",
       options: { data },
     })
 
     expect(match?.providerID).toBe("openai")
-    expect(match?.confidence).toBe("candidate-provider")
+    expect(match?.confidence).toBe("model-suffix")
   })
 
   test("matches normalized model names without relying on custom provider IDs", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "123456",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt5.5",
       options: { data },
     })
 
     expect(match?.providerID).toBe("openai")
     expect(match?.modelID).toBe("gpt-5.5")
-    expect(match?.confidence).toBe("alias-candidate")
+    expect(match?.confidence).toBe("model-suffix")
     expect(match?.model.limit?.context).toBe(1050000)
   })
 
   test("strips model namespace prefixes before matching model names", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+    const match = await findModelsDevModelBySuffix({
       modelID: "openai/gpt-5.5",
       options: { data },
     })
@@ -163,9 +157,7 @@ describe("models.dev", () => {
   })
 
   test("does not treat custom provider suffixes as model aliases", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "shenye",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5.5-shenye",
       options: { data },
     })
@@ -174,9 +166,7 @@ describe("models.dev", () => {
   })
 
   test("does not match a base model name to a suffixed model", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5.5",
       options: {
         data: {
@@ -199,9 +189,7 @@ describe("models.dev", () => {
   })
 
   test("does not use display names to collapse model suffixes", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5.5",
       options: {
         data: {
@@ -224,9 +212,7 @@ describe("models.dev", () => {
   })
 
   test("does not match a suffixed model name to a base model", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5.5-mini",
       options: {
         data: {
@@ -249,9 +235,7 @@ describe("models.dev", () => {
   })
 
   test("does not collapse official model suffixes", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5.5-pro",
       options: { data },
     })
@@ -268,9 +252,7 @@ describe("models.dev", () => {
       ["glm4.6", "glm-4.6"],
       ["kimi-k2.5", "kimi-k2.5"],
     ] as const) {
-      const match = await findModelsDevModelForEndpoint({
-        endpointKind: "openai-compatible",
-        providerID: "123456",
+      const match = await findModelsDevModelBySuffix({
         modelID,
         options: { data },
       })
@@ -281,22 +263,18 @@ describe("models.dev", () => {
     }
   })
 
-  test("falls back to global unique model IDs", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+  test("matches model IDs across all providers", async () => {
+    const match = await findModelsDevModelBySuffix({
       modelID: "claude-test",
       options: { data },
     })
 
     expect(match?.providerID).toBe("anthropic")
-    expect(match?.confidence).toBe("global-unique")
+    expect(match?.confidence).toBe("model-suffix")
   })
 
-  test("reports ambiguous global matches without selecting one", async () => {
-    const result = await lookupModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "custom",
+  test("uses the first suffix match when multiple models match", async () => {
+    const result = await lookupModelsDevModelBySuffix({
       modelID: "shared-model",
       options: {
         data: {
@@ -306,15 +284,13 @@ describe("models.dev", () => {
       },
     })
 
-    expect(result.match).toBeUndefined()
-    expect(result.warnings[0]).toContain("ambiguous")
-    expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
+    expect(result.match?.providerID).toBe("first")
+    expect(result.match?.model.limit?.context).toBe(1)
+    expect(result.warnings).toEqual([])
   })
 
   test("does not use provider IDs as metadata matching input", async () => {
-    const match = await findModelsDevModelForEndpoint({
-      endpointKind: "openai-compatible",
-      providerID: "anthropic",
+    const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5",
       options: { data },
     })

@@ -68,7 +68,7 @@ describe("template resolver", () => {
     expect(result.sources.some((source) => source.type === "models.dev")).toBe(true)
   })
 
-  test("matches custom providers to models.dev endpoint candidates", async () => {
+  test("matches custom providers through global models.dev suffix lookup", async () => {
     const result = await resolveModelTemplate({
       endpointKind: "openai-responses",
       providerID: "test-mimi",
@@ -82,6 +82,38 @@ describe("template resolver", () => {
     expect(result.model.limit?.context).toBe(1050000)
     expect(Object.keys(result.model.variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
     expect(result.sources.find((source) => source.type === "models.dev")?.type).toBe("models.dev")
+  })
+
+  test.each(["openai-compatible", "openai-responses", "anthropic-compatible", "gemini-compatible"] as const)("matches model capabilities globally for %s", async (endpointKind) => {
+    const result = await resolveModelTemplate({
+      endpointKind,
+      providerID: "custom-proxy",
+      modelID: "deepseek-v4-flash",
+      modelsDev: {
+        data: {
+          deepseek: {
+            id: "deepseek",
+            name: "DeepSeek",
+            models: {
+              "deepseek-v4-flash": {
+                id: "deepseek-v4-flash",
+                name: "DeepSeek V4 Flash",
+                reasoning: true,
+                tool_call: true,
+                temperature: true,
+                limit: { context: 256000, output: 64000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.confidence).toBe("exact")
+    expect(result.needsConfirmation).toBe(false)
+    expect(result.model.name).toBe("DeepSeek V4 Flash")
+    expect(result.model.limit).toEqual({ context: 256000, output: 64000 })
+    expect(result.sources.find((source) => source.type === "models.dev")?.providerID).toBe("deepseek")
   })
 
   test("does not fall back to family templates for unknown models", async () => {
