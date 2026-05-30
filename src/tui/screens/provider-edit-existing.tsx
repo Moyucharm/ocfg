@@ -114,13 +114,19 @@ export function ProviderEditExistingScreen(props: {
     if (item?.kind === "item") startField(item.item.id as Field)
   }
 
+  function menuIndexForField(field: "channel-type" | "cache") {
+    const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.item.id === field)
+    return item?.kind === "item" ? item.itemIndex : 0
+  }
+
   function runSelectIndex(index = selected) {
     const item = openCodeMenuRows(selectGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
     if (mode === "channel-type") setDraft((current) => ({ ...current, endpointKind: item.item.id as EndpointKind }))
     if (mode === "cache") setDraft((current) => ({ ...current, setCacheKey: item.item.id === "true" }))
+    const returnIndex = mode === "channel-type" || mode === "cache" ? menuIndexForField(mode) : 0
     setMode("menu")
-    setSelected(0)
+    setSelected(returnIndex)
     setQuery("")
   }
 

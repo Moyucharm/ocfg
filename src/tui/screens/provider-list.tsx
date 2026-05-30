@@ -84,7 +84,7 @@ export function ProviderListScreen(props: {
         }))
         if (!active) return
         setProviders(nextProviders)
-        setSelected(0)
+        setSelected((current) => Math.min(current, Math.max(0, nextProviders.length + (mode === "add" ? 1 : 0) - 1)))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {
@@ -95,7 +95,7 @@ export function ProviderListScreen(props: {
     return () => {
       active = false
     }
-  }, [props.selection])
+  }, [mode, props.selection])
 
   if (loading) return <Text>{t("provider.loading")}</Text>
   if (error) return <Text color="red">{t("provider.failed", { message: error })}</Text>

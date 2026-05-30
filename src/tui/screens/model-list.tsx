@@ -61,6 +61,10 @@ export function ModelListScreen(props: {
       props.onBack()
       return
     }
+    if (key.ctrl && matchesKeybind("toggleAll", input, key, keybinds)) {
+      props.onAddModel()
+      return
+    }
     if (matchesKeybind("delete", input, key, keybinds)) {
       const item = selectedItem()
       if (item?.kind === "item" && item.item.id !== "__add") props.onDeleteModel(item.item.id)
@@ -89,7 +93,7 @@ export function ModelListScreen(props: {
         }))
         if (!active) return
         setModels(nextModels)
-        setSelected(0)
+        setSelected((current) => Math.min(current > 0 ? current : nextModels.length > 0 ? 1 : 0, nextModels.length))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {
@@ -105,5 +109,5 @@ export function ModelListScreen(props: {
   if (loading) return <Text>{t("model.loading")}</Text>
   if (error) return <Text color="red">{t("model.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={t("model.select")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.add")}\tctrl+a`, `${t("common.delete")}\td`, `${t("common.back")}\tesc`]} />
+  return <OpenCodeMenu title={t("model.select")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.add")}\tctrl+a`, `${t("common.delete")}\td`, `${t("common.back")}\tesc`]} />
 }

@@ -105,5 +105,5 @@ export function DefaultModelScreen(props: {
   if (loading) return <Text>{t("defaultModel.loading")}</Text>
   if (error) return <Text color="red">{t("defaultModel.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={step === "target" ? t("defaultModel.title.default") : t("defaultModel.title.model")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={step === "model" ? [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`] : [`${t("common.back")}\tesc`]} />
+  return <OpenCodeMenu title={step === "target" ? t("defaultModel.title.default") : t("defaultModel.title.model")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={step === "model" ? [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`] : [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

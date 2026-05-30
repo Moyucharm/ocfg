@@ -129,7 +129,7 @@ export function PluginListScreen(props: {
         if (!active) return
         setPlugins(nextPlugins)
         setLocalPlugins(nextLocalPlugins)
-        setSelected(0)
+        setSelected((current) => Math.min(current, Math.max(0, 2 + nextPlugins.length + nextLocalPlugins.length - 1)))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {

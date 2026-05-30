@@ -195,7 +195,7 @@ export function PromptListScreen(props: {
         setRuleProfiles(nextRuleProfiles)
         setInstructions(nextInstructions)
         setPrompts(nextPrompts)
-        setSelected(0)
+        setSelected((current) => Math.min(current, Math.max(0, 2 + nextRules.length + nextRuleProfiles.length + nextInstructions.length + nextPrompts.length + defaultPromptTemplates.length - 1)))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {

@@ -115,10 +115,16 @@ export function ModelEditExistingScreen(props: {
     if (item?.kind === "item") startField(item.item.id as Field)
   }
 
+  function menuIndexForBooleanField(field: BooleanField) {
+    const menuID = field === "toolCall" ? "tool-call" : field
+    const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.item.id === menuID)
+    return item?.kind === "item" ? item.itemIndex : 0
+  }
+
   function runBooleanIndex(index = selected) {
     setDraft((current) => ({ ...current, [booleanField]: index === 1 }))
     setMode("menu")
-    setSelected(0)
+    setSelected(menuIndexForBooleanField(booleanField))
   }
 
   useTuiInput((input, key) => {
