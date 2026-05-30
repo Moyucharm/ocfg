@@ -6,6 +6,8 @@ import { readConfig } from "../core/config-reader.js"
 import { validateConfig } from "../core/schema-validator.js"
 import { defaultSecretFilePath, restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
+import { enableExaSearchPermissions, OPENCODE_EXA_ENV } from "../core/search-toggle.js"
+import { writeUserEnvVar, type UserEnvWriteResult } from "../core/user-env.js"
 import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
 import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
 import { disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
@@ -57,6 +59,8 @@ import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
 import { LanguageScreen } from "./screens/language.js"
+import { ToolsScreen } from "./screens/tools.js"
+import { ToolsResultScreen } from "./screens/tools-result.js"
 import { TuiI18nProvider, translate, type TuiLanguage } from "./i18n.js"
 import { useTuiInput } from "./input.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
@@ -69,7 +73,7 @@ import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeFrame, OpenCodeNotice } from "./ui.js"
 import { isRecord } from "../core/object-utils.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
-import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
+import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, ToolsResultState, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
 export function App() {
   const { exit } = useApp()
@@ -77,6 +81,8 @@ export function App() {
   const routeHistory = useRef<TuiRoute[]>([])
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
   const [message, setMessage] = useState<string>()
+  const [toolsRefreshKey, setToolsRefreshKey] = useState(0)
+  const [toolsResult, setToolsResult] = useState<ToolsResultState>()
   const [preferenceWarning, setPreferenceWarning] = useState<string>()
   const [preferencePath, setPreferencePath] = useState<string>()
   const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
@@ -91,6 +97,7 @@ export function App() {
   const [promptEditState, setPromptEditState] = useState<PromptEditState>()
   const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
   const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
+  const [diffCompletedRoute, setDiffCompletedRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
     targetPath: translate(defaultTuiPreferences.language, "diff.noTargetSelected"),
     diff: createConfigDiff("", ""),
@@ -105,6 +112,11 @@ export function App() {
   function goBack(fallback: TuiRoute = "home") {
     const previousRoute = routeHistory.current.pop()
     setRoute(previousRoute ?? fallback)
+  }
+
+  function completeFlow(nextRoute: TuiRoute) {
+    routeHistory.current = []
+    setRoute(nextRoute)
   }
 
   function promptWriteMessage(key: "prompt.saved" | "prompt.deleted" | "prompt.switchedRuleConfig", result: PromptWriteResult) {
@@ -142,6 +154,7 @@ export function App() {
     if (action === "switch-language") navigate("language")
     if (action === "manage-plugins") navigate("plugin-list")
     if (action === "manage-prompts") navigate("prompt-list")
+    if (action === "tools") navigate("tools")
     if (action === "add-provider") {
       setProviderListMode("add")
       navigate("provider-list")
@@ -171,15 +184,83 @@ export function App() {
     }
   }
 
-  function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute) {
+  function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute, completedRoute: TuiRoute = returnRoute) {
     setDiffReturnRoute(returnRoute)
+    setDiffCompletedRoute(completedRoute)
     setDiffReview(review)
     navigate("diff-review")
   }
 
-  function closeCompletedDiffReview() {
+  function closeDiffReview() {
+    if (!diffReview.completed) {
+      goBack(diffReturnRoute)
+      return
+    }
     routeHistory.current = []
-    setRoute("home")
+    setRoute(diffCompletedRoute)
+  }
+
+  function envTargetLabel(result: UserEnvWriteResult) {
+    return result.targetPath ?? result.command ?? result.variable
+  }
+
+  function toolsEnvMessage(base: string) {
+    return `${base} ${translate(tuiPreferences.language, "tools.restart")}`
+  }
+
+  function openToolsResult(result: ToolsResultState) {
+    setToolsResult(result)
+    navigate("tools-result")
+  }
+
+  function closeToolsResult() {
+    goBack("tools")
+  }
+
+  function exaSearchConfigText(document: Awaited<ReturnType<typeof readConfig>>, nextConfig: Record<string, unknown>) {
+    const changes: { path: (string | number)[]; value: unknown }[] = []
+    if (!sameJSON(document.data.$schema, nextConfig.$schema)) changes.push({ path: ["$schema"], value: nextConfig.$schema })
+    if (!sameJSON(document.data.permission, nextConfig.permission)) changes.push({ path: ["permission"], value: nextConfig.permission })
+    return changes.length > 0 ? applyConfigEdits(document, changes) : document.text || "{}\n"
+  }
+
+  async function toggleExaSearch(currentlyEnabled: boolean) {
+    setMessage(undefined)
+    try {
+      if (currentlyEnabled) {
+        const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "0")
+        const base = translate(tuiPreferences.language, "tools.disabledMessage", { envTarget: envTargetLabel(envResult) })
+        setToolsRefreshKey((current) => current + 1)
+        openToolsResult({ message: toolsEnvMessage(base), tone: "success" })
+        return
+      }
+
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+
+      const nextConfig = enableExaSearchPermissions(document.data)
+      if (!sameJSON(document.data, nextConfig)) {
+        const nextText = exaSearchConfigText(document, nextConfig)
+        const validation = await validateConfig(nextConfig, { relaxModelEnum: true })
+        if (validation.diagnostics.length > 0) throw new Error(validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+        const result = await writeConfigSafely({
+          document,
+          nextConfig,
+          nextText,
+          validate: () => validation,
+        })
+        if (result.diagnostics.length > 0) throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+      }
+
+      const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "1")
+      const base = translate(tuiPreferences.language, "tools.enabledMessage", { configPath: target.path, envTarget: envTargetLabel(envResult) })
+      setToolsRefreshKey((current) => current + 1)
+      openToolsResult({ message: toolsEnvMessage(base), tone: "success" })
+    } catch (caught) {
+      openToolsResult({ message: caught instanceof Error ? caught.message : String(caught), tone: "error" })
+      setToolsRefreshKey((current) => current + 1)
+    }
   }
 
   async function openExistingProviderEdit(providerID: string) {
@@ -193,7 +274,7 @@ export function App() {
       navigate("provider-edit-existing")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("home")
+      setRoute("provider-list")
     }
   }
 
@@ -269,20 +350,21 @@ export function App() {
       const review = await prepareProviderWriteState(generated)
       setDiffReview(await commitPreparedWrite(review))
       setDiffReturnRoute("home")
+      setDiffCompletedRoute("home")
       navigate("diff-review")
     } catch (caught) {
       setDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) })
       setDiffReturnRoute("home")
+      setDiffCompletedRoute("home")
       navigate("diff-review")
     }
   }
 
   async function reviewProviderDiff(generated: GeneratedProviderDraft) {
     try {
-      openDiffReview(await prepareProviderWriteState(generated), "model-edit")
+      openDiffReview(await prepareProviderWriteState(generated), "model-edit", "home")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("home")
     }
   }
 
@@ -304,7 +386,7 @@ export function App() {
         nextConfig,
         nextText,
         secretFile: draft.apiKeyValue ? { path: defaultSecretFilePath(providerID), value: draft.apiKeyValue } : undefined,
-      }, "provider-edit-existing")
+      }, "provider-edit-existing", "provider-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "provider-edit-existing")
     }
@@ -390,7 +472,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "plugin-add")
+      }, "plugin-add", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-add")
     }
@@ -400,10 +482,9 @@ export function App() {
     try {
       const result = await installLocalPlugin(sourcePath, { scope: config.scope })
       setMessage(translate(tuiPreferences.language, "plugin.localInstalled", { path: result.toPath }))
-      setRoute("plugin-list")
+      completeFlow("plugin-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("plugin-list")
     }
   }
 
@@ -419,7 +500,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "plugin-edit")
+      }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
     }
@@ -437,7 +518,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "plugin-edit")
+      }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
     }
@@ -469,10 +550,9 @@ export function App() {
         await enableLocalPlugin(plugin.fileName, { scope: config.scope })
       }
       setMessage(undefined)
-      setRoute("plugin-list")
+      completeFlow("plugin-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("plugin-list")
     }
   }
 
@@ -544,10 +624,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await writePromptFileSafely(target, fileName, content)
       setMessage(promptWriteMessage("prompt.saved", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -556,10 +635,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await writeRuleFileSafely(target, content)
       setMessage(promptWriteMessage("prompt.saved", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -568,10 +646,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await writeRuleProfileSafely(target, fileName, content)
       setMessage(promptWriteMessage("prompt.saved", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -589,10 +666,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await writeRuleFileSafely(target, content)
       setMessage(promptWriteMessage("prompt.saved", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -602,10 +678,9 @@ export function App() {
       const content = await readRuleProfile(target, profile.fileName)
       const result = await writeRuleFileSafely(target, content)
       setMessage(promptWriteMessage("prompt.switchedRuleConfig", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -614,10 +689,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await deleteRuleProfileSafely(target, profile.fileName)
       setMessage(promptWriteMessage("prompt.deleted", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -625,10 +699,9 @@ export function App() {
     try {
       const result = await writeInstructionFileSafely(instruction, content)
       setMessage(promptWriteMessage("prompt.saved", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -645,7 +718,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "prompt-edit")
+      }, "prompt-edit", "prompt-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
     }
@@ -667,7 +740,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "prompt-edit")
+      }, "prompt-edit", "prompt-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
     }
@@ -682,7 +755,7 @@ export function App() {
       if (!shouldWriteConfig) {
         const result = await deletePromptFileSafely(target, prompt.fileName)
         setMessage(promptWriteMessage("prompt.deleted", result))
-        setRoute("prompt-list")
+        completeFlow("prompt-list")
         return
       }
 
@@ -699,7 +772,7 @@ export function App() {
           name: prompt.fileName,
           path: prompt.path,
         },
-      }, "prompt-edit")
+      }, "prompt-edit", "prompt-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
     }
@@ -710,10 +783,9 @@ export function App() {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const result = await deleteRuleFileSafely(target)
       setMessage(promptWriteMessage("prompt.deleted", result))
-      setRoute("prompt-list")
+      completeFlow("prompt-list")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("prompt-list")
     }
   }
 
@@ -729,7 +801,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
-      }, "prompt-edit")
+      }, "prompt-edit", "prompt-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "prompt-edit")
     }
@@ -746,7 +818,7 @@ export function App() {
       navigate("delete-confirm")
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught))
-      setRoute("home")
+      setRoute("provider-list")
     }
   }
 
@@ -788,7 +860,7 @@ export function App() {
           document,
           nextConfig,
           nextText,
-        }, "home")
+        }, "provider-list")
         return
       }
 
@@ -852,6 +924,8 @@ export function App() {
             ) : null}
             {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
             {route === "language" ? <LanguageScreen currentLanguage={tuiPreferences.language} onSelect={(language) => void selectLanguage(language)} onBack={() => goBack()} /> : null}
+            {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onBack={() => goBack()} /> : null}
+            {route === "tools-result" && toolsResult ? <ToolsResultScreen result={toolsResult} onClose={closeToolsResult} /> : null}
             {route === "provider-list" ? (
               <ProviderListScreen
                 selection={config}
@@ -1018,7 +1092,7 @@ export function App() {
                 review={diffReview}
                 diffStyle={tuiPreferences.diffStyle}
                 onCancel={() => goBack(diffReturnRoute)}
-                onClose={closeCompletedDiffReview}
+                onClose={closeDiffReview}
                 onConfirm={confirmWrite}
               />
             ) : null}

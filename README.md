@@ -14,6 +14,7 @@ OpenCode configuration editor.
 - Add or delete models under existing providers.
 - Delete providers with reference checks for top-level defaults.
 - Set or clear top-level `model` and `small_model` from the TUI.
+- Toggle OpenCode's built-in Exa `websearch`/`webfetch` support from the TUI tools menu.
 - Install, enable, and disable OpenCode npm plugins and local plugin files.
 - Manage OpenCode prompt/rule files, including `AGENTS.md`, top-level `instructions`, and per-agent `agent.<id>.prompt`.
 - Preserve JSONC comments outside edited paths where practical.
@@ -295,9 +296,12 @@ The TUI is opened with `ocfg tui`.
 - `Manage Prompts` lists and edits `AGENTS.md`, reusable `AGENTS.md` configs, configured `instructions`, prompt files, and bundled defaults. It can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules; create, edit, replace, and delete the active `AGENTS.md`; add custom prompt files; edit multi-line content with arrow-key cursor movement and wrapping; use a prompt globally; or apply it to `build`, `plan`, or a custom agent.
 - `Delete Provider` selects an existing provider and requires extra confirmation for referenced providers.
 - `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
+- `Tools` includes an OpenCode Exa search toggle. Enabling writes `permission.websearch = "allow"` and `permission.webfetch = "allow"` to the currently selected global or project config, then sets the current user's `OPENCODE_ENABLE_EXA=1`. Disabling only sets `OPENCODE_ENABLE_EXA=0` and leaves config untouched.
 - `Switch Config Target` changes between global and project config targets before writing.
 
-Config-mutating TUI flows show a diff before writing and require explicit confirmation. Local plugin installs report the affected file path; enable/disable changes are reflected directly in the plugin list status.
+Most config-mutating TUI flows show a diff before writing and require explicit confirmation. The Exa search tool is intentionally one-click: it writes immediately, creates normal config backups when it changes the selected OpenCode config, and updates only the current user's environment. Local plugin installs report the affected file path; enable/disable changes are reflected directly in the plugin list status.
+
+For Exa search environment changes, Windows uses user-level `setx` and does not require administrator rights. On macOS/Linux, ocfg first reuses an existing ocfg-managed Exa block in `~/.bashrc`, `~/.zshrc`, or `~/.profile`; if none exists, ocfg writes one shell config chosen from the current shell. Close and reopen the current terminal, or open a new terminal window, then start OpenCode.
 
 ## Secret Handling
 
@@ -323,7 +327,7 @@ CLI `--api-key` values may still be recorded by shell history or process inspect
 
 Mutating writes validate the full next config before writing.
 
-TUI writes show a diff and require explicit confirmation before writing.
+TUI writes usually show a diff and require explicit confirmation before writing. The Exa search tools toggle is the one-click exception.
 
 CLI writes support `--dry-run` to print the planned diff and validate without creating, modifying, or deleting files.
 

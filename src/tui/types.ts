@@ -23,6 +23,8 @@ export type TuiRoute =
   | "default-model"
   | "model-edit"
   | "language"
+  | "tools"
+  | "tools-result"
   | "diff-review"
 
 export type ProviderListMode = "add" | "edit" | "delete"
@@ -50,6 +52,7 @@ export type TuiAction =
   | "manage-plugins"
   | "manage-prompts"
   | "set-default-model"
+  | "tools"
   | "switch-config"
   | "switch-language"
 
@@ -80,6 +83,11 @@ export type DiffReviewState = {
   promptFilePath?: string
   error?: string
   completed?: boolean
+}
+
+export type ToolsResultState = {
+  message: string
+  tone?: "warning" | "error" | "success"
 }
 
 export type ProviderFlowDraft = {

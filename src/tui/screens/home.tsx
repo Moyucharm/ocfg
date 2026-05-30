@@ -17,6 +17,7 @@ export function HomeScreen(props: { selection: TuiConfigSelection; onAction: (ac
         { id: "manage-prompts", label: t("home.managePrompts") },
         { id: "doctor", label: t("home.doctor") },
         { id: "set-default-model", label: t("home.setDefaultModel") },
+        { id: "tools", label: t("home.tools") },
         { id: "switch-config", label: t("home.switchConfig") },
         { id: "switch-language", label: t("home.switchLanguage") },
         { id: "delete-provider", label: t("home.deleteProvider"), danger: true },

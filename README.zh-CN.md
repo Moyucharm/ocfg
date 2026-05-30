@@ -12,6 +12,7 @@ OpenCode 配置编辑器。
 - 在现有提供商下添加或删除模型。
 - 删除提供商时检查顶层默认引用。
 - 在 TUI 中设置或清除顶层 `model` 和 `small_model`。
+- 在 TUI 小工具中切换 OpenCode 内置 Exa `websearch`/`webfetch` 支持。
 - 安装、启用和禁用 OpenCode npm 插件与本地插件文件。
 - 管理 OpenCode 提示词/规则文件，覆盖 `AGENTS.md`、顶层 `instructions` 和单个 agent 的 `agent.<id>.prompt`。
 - 尽可能保留编辑路径之外的 JSONC 注释。
@@ -293,9 +294,12 @@ ocfg tui
 - `Manage Prompts` 列出并编辑 `AGENTS.md`、可复用 `AGENTS.md` 配置、已配置的 `instructions`、提示词文件和内置默认模板；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则，创建、编辑、替换和删除当前 `AGENTS.md`，添加自定义提示词文件，用支持方向键移动和自动换行的多行编辑器编辑内容，作为全局指令使用，或应用到 `build`、`plan` 及自定义 agent。
 - `Delete Provider` 选择现有提供商，并对被引用的提供商要求额外确认。
 - `Set Default Model` 使用现有 provider/model 引用设置或清除顶层 `model` 和 `small_model`。
+- `Tools` 包含 OpenCode Exa 搜索开关。开启会把 `permission.websearch = "allow"` 和 `permission.webfetch = "allow"` 写入当前选择的全局或项目配置，然后设置当前用户的 `OPENCODE_ENABLE_EXA=1`。关闭只设置 `OPENCODE_ENABLE_EXA=0`，不会改动配置。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。
 
-会修改配置的 TUI 流程会在写入前显示 diff，并要求明确确认。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
+大多数会修改配置的 TUI 流程会在写入前显示 diff，并要求明确确认。Exa 搜索工具按设计是一键开关：它会立即写入，修改所选 OpenCode 配置时仍会创建常规备份，并且只更新当前用户的环境变量。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
+
+Exa 搜索的环境变量变更在 Windows 上使用用户级 `setx`，不需要管理员权限。macOS/Linux 会先复用 `~/.bashrc`、`~/.zshrc` 或 `~/.profile` 里已有的 ocfg Exa 管理块；如果不存在，ocfg 才会按当前 shell 选择一个配置文件写入。请关闭并重新打开当前终端，或打开新的终端窗口，然后再启动 OpenCode。
 
 ## 密钥处理
 
@@ -321,7 +325,7 @@ CLI `--api-key` 值在某些系统上仍可能被 shell 历史记录或进程检
 
 修改性写入会在写入前验证完整的新配置。
 
-TUI 写入会显示 diff，并要求明确确认后才写入。
+TUI 写入通常会显示 diff，并要求明确确认后才写入。Exa 搜索小工具是一键开关例外。
 
 CLI 写入支持 `--dry-run`，用于打印计划中的 diff 并执行验证，不会创建、修改或删除文件。
 
