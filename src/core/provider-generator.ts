@@ -3,6 +3,7 @@ import { renderSecretRef } from "./secret-strategy.js"
 import { resolveModelTemplate, type ModelMetadataSource } from "./template-resolver.js"
 import { getEndpointTemplate } from "../templates/index.js"
 import type { ModelsDevOptions } from "./models-dev.js"
+import { applyGpt5LongContextLimit, isGpt5LongContextModel } from "./model-limit-presets.js"
 
 export type CreateProviderDraftInput = {
   endpointKind: EndpointKind
@@ -12,6 +13,7 @@ export type CreateProviderDraftInput = {
   apiKey: SecretRef
   modelIDs: string[]
   setCacheKey?: boolean
+  gpt5LongContext?: boolean
   modelsDev?: ModelsDevOptions
 }
 
@@ -26,6 +28,7 @@ export type GeneratedModelResolution = {
   modelID: string
   sources: ModelMetadataSource[]
   needsConfirmation: boolean
+  supportsGpt5LongContext: boolean
   warnings: string[]
 }
 
@@ -47,12 +50,14 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
       modelID,
       modelsDev: input.modelsDev,
     })
-    models[modelID] = resolved.model
+    const supportsGpt5LongContext = isGpt5LongContextModel(modelID)
+    models[modelID] = supportsGpt5LongContext ? applyGpt5LongContextLimit(resolved.model, input.gpt5LongContext === true) : resolved.model
     modelConfirmations[modelID] = resolved.needsConfirmation
     modelResolutions[modelID] = {
       modelID,
       sources: resolved.sources,
       needsConfirmation: resolved.needsConfirmation,
+      supportsGpt5LongContext,
       warnings: resolved.warnings,
     }
     warnings.push(...resolved.warnings)
@@ -76,5 +81,24 @@ export async function createProviderDraftFromEndpoint(input: CreateProviderDraft
     modelConfirmations,
     modelResolutions,
     warnings,
+  }
+}
+
+export function generatedSupportsGpt5LongContext(generated: GeneratedProviderDraft | undefined) {
+  return generated !== undefined && Object.values(generated.modelResolutions).some((resolution) => resolution.supportsGpt5LongContext)
+}
+
+export function applyGeneratedGpt5LongContext(generated: GeneratedProviderDraft, enabled: boolean): GeneratedProviderDraft {
+  const models = Object.fromEntries(Object.entries(generated.provider.models).map(([modelID, model]) => [
+    modelID,
+    generated.modelResolutions[modelID]?.supportsGpt5LongContext ? applyGpt5LongContextLimit(model, enabled) : model,
+  ]))
+
+  return {
+    ...generated,
+    provider: {
+      ...generated.provider,
+      models,
+    },
   }
 }

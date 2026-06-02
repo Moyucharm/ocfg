@@ -18,6 +18,7 @@ export type AddProviderCommandOptions = MutatingCommandOptions &
     channelType: string
     name?: string
     baseUrl?: string
+    gpt5LongContext?: boolean
     model?: string[]
   }
 
@@ -43,6 +44,7 @@ export async function addProviderCommand(providerID: string, options: AddProvide
     baseURL: options.baseUrl,
     apiKey: { type: "file", path: apiKeyFilePath },
     modelIDs,
+    gpt5LongContext: options.gpt5LongContext,
     modelsDev: { data: modelsDevData },
   })
   generated.provider.npm = recommendedNpmForChannelType(endpointKind)

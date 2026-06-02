@@ -158,7 +158,7 @@ describe("models.dev", () => {
 
   test("does not treat custom provider suffixes as model aliases", async () => {
     const match = await findModelsDevModelBySuffix({
-      modelID: "gpt-5.5-shenye",
+      modelID: "gpt-5.5-custom",
       options: { data },
     })
 

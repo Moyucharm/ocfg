@@ -8,7 +8,7 @@ OpenCode 配置编辑器。
 - 使用 `validate` 按 OpenCode schema 验证配置。
 - 通过面向协议的端点模板添加提供商。
 - 编辑提供商名称、通道类型、基础 URL、API key 文件引用和 `setCacheKey`。
-- 编辑模型显示名称、限制和常见能力标记。
+- 编辑模型显示名称、上下文/输入/输出限制、GPT-5 长上下文 preset 和常见能力标记。
 - 在现有提供商下添加或删除模型。
 - 删除提供商时检查顶层默认引用。
 - 在 TUI 中设置或清除顶层 `model` 和 `small_model`。
@@ -151,8 +151,11 @@ ocfg add provider <provider-id> \
   --model <id> \
   [--name <name>] \
   [--base-url <url>] \
+  [--gpt-5-long-context] \
   [--dry-run]
 ```
+
+受支持的 OpenAI GPT-5.4/5.5 长上下文模型默认使用更省额度的 `400000/272000/128000` 上下文/输入/输出 preset。使用 `--gpt-5-long-context` 可切换到 OpenAI API 1M 上下文 preset，即 `1050000/922000/128000`。
 
 编辑提供商：
 
@@ -172,7 +175,9 @@ ocfg edit provider <provider-id> \
 ocfg edit model <provider-id/model-id> \
   [--name <name>] \
   [--context <tokens>] \
+  [--input <tokens>] \
   [--output <tokens>] \
+  [--gpt-5-long-context | --no-gpt-5-long-context] \
   [--reasoning] \
   [--tool-call] \
   [--temperature] \

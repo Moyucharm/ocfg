@@ -90,6 +90,7 @@ addMutatingOptions(add.command("provider <provider-id>").description("Add a prov
   .option("--base-url <url>", "Provider base URL")
   .requiredOption("--api-key <value>", "API key content to store in the managed secret file")
   .option("--model <id>", "Model ID to add", collect, [])
+  .option("--gpt-5-long-context", "Use the GPT-5 1M context preset for supported OpenAI GPT-5.4/5.5 models", undefined)
   .action(async (providerID, options) => {
     await runAction(() => addProviderCommand(providerID, normalizeOptions(options) as never))
   })
@@ -159,7 +160,10 @@ addMutatingOptions(edit.command("provider <provider-id>").description("Edit a pr
 addMutatingOptions(edit.command("model <provider-id/model-id>").description("Edit a model."))
   .option("--name <name>", "Model display name")
   .option("--context <tokens>", "Context token limit")
+  .option("--input <tokens>", "Input token limit")
   .option("--output <tokens>", "Output token limit")
+  .option("--gpt-5-long-context", "Use the GPT-5 1M context preset for supported OpenAI GPT-5.4/5.5 models", undefined)
+  .option("--no-gpt-5-long-context", "Use the budget-friendly 400K context preset for supported GPT-5.4/5.5 models")
   .option("--reasoning", "Enable reasoning capability", undefined)
   .option("--tool-call", "Enable tool call capability", undefined)
   .option("--temperature", "Enable temperature capability", undefined)

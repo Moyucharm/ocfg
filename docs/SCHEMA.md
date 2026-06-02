@@ -89,6 +89,7 @@ Known provider option fields:
   "name": "Model Display Name",
   "limit": {
     "context": 200000,
+    "input": 150000,
     "output": 64000
   },
   "modalities": {
@@ -126,6 +127,32 @@ Known model fields:
 - `variants`
 
 Do not generate unknown top-level model fields.
+
+For supported OpenAI GPT-5.4/5.5 long-context models, OCfg defaults to the budget-friendly preset:
+
+```jsonc
+{
+  "limit": {
+    "context": 400000,
+    "input": 272000,
+    "output": 128000
+  }
+}
+```
+
+Users can opt into the OpenAI API 1M context preset:
+
+```jsonc
+{
+  "limit": {
+    "context": 1050000,
+    "input": 922000,
+    "output": 128000
+  }
+}
+```
+
+This preset only changes the OpenCode model metadata used for display and compaction thresholds. The actual provider/backend must still accept the selected context window.
 
 ## Plugin Shape
 
@@ -184,7 +211,7 @@ Unknown model fallback:
 }
 ```
 
-Unknown compatible models intentionally omit `limit` and capability flags instead of guessing. Add `limit`, `reasoning`, `tool_call`, `temperature`, modalities, or variants only from a models.dev suffix match or explicit user input. The lookup scans all models.dev providers regardless of channel type and uses the first matching model name suffix. Future/custom aliases such as `gpt5.5-*` must not be mapped to GPT-5 limits unless metadata confirms that exact model name. CLI and TUI flows surface a warning when metadata is missing.
+Unknown compatible models intentionally omit `limit` and capability flags instead of guessing. Add `limit`, `reasoning`, `tool_call`, `temperature`, modalities, or variants only from a models.dev suffix match or explicit user input. The lookup scans all models.dev providers regardless of channel type and uses the first matching model name suffix. Future or custom model aliases must not be mapped to GPT-5 limits unless metadata confirms that exact model name. CLI and TUI flows surface a warning when metadata is missing.
 
 ### OpenAI Responses
 

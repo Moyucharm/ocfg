@@ -10,7 +10,7 @@ OpenCode configuration editor.
 - Validate config against the OpenCode schema with `validate`.
 - Add providers from protocol-oriented endpoint templates.
 - Edit provider name, channel type, base URL, API key file reference, and `setCacheKey`.
-- Edit model display names, limits, and common capability flags.
+- Edit model display names, context/input/output limits, GPT-5 long-context presets, and common capability flags.
 - Add or delete models under existing providers.
 - Delete providers with reference checks for top-level defaults.
 - Set or clear top-level `model` and `small_model` from the TUI.
@@ -153,8 +153,11 @@ ocfg add provider <provider-id> \
   --model <id> \
   [--name <name>] \
   [--base-url <url>] \
+  [--gpt-5-long-context] \
   [--dry-run]
 ```
+
+Supported OpenAI GPT-5.4/5.5 long-context models default to a budget-friendly `400000/272000/128000` context/input/output preset. Use `--gpt-5-long-context` to opt into the OpenAI API 1M context preset, `1050000/922000/128000`.
 
 Edit a provider:
 
@@ -174,7 +177,9 @@ Edit a model:
 ocfg edit model <provider-id/model-id> \
   [--name <name>] \
   [--context <tokens>] \
+  [--input <tokens>] \
   [--output <tokens>] \
+  [--gpt-5-long-context | --no-gpt-5-long-context] \
   [--reasoning] \
   [--tool-call] \
   [--temperature] \

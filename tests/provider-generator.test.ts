@@ -122,12 +122,12 @@ describe("provider generator", () => {
     expect(result.provider.models["gpt5.5"].variants).toBeUndefined()
   })
 
-  test("uses models.dev metadata for normalized model names", async () => {
+  test("does not apply GPT-5 preset to non-official aliases", async () => {
     const result = await createProviderDraftFromEndpoint({
       endpointKind: "openai-compatible",
       providerID: "123456",
       name: "Custom",
-      apiKey: { type: "file", path: "~/.secrets/shenye" },
+      apiKey: { type: "file", path: "~/.secrets/custom" },
       modelIDs: ["gpt5.5"],
       modelsDev: {
         data: {
@@ -153,15 +153,16 @@ describe("provider generator", () => {
     expect(result.modelConfirmations["gpt5.5"]).toBe(false)
     expect(result.provider.models["gpt5.5"].name).toBe("GPT-5.5 From Models.dev")
     expect(result.provider.models["gpt5.5"].limit).toEqual({ context: 1050000, input: 922000, output: 128000 })
+    expect(result.modelResolutions["gpt5.5"].supportsGpt5LongContext).toBe(false)
   })
 
-  test("does not use provider suffixes as model aliases", async () => {
+  test("defaults GPT-5 long context off for official model IDs", async () => {
     const result = await createProviderDraftFromEndpoint({
       endpointKind: "openai-compatible",
-      providerID: "shenye",
-      name: "Shenye",
-      apiKey: { type: "file", path: "~/.secrets/shenye" },
-      modelIDs: ["gpt5.5-shenye"],
+      providerID: "123456",
+      name: "Custom",
+      apiKey: { type: "file", path: "~/.secrets/custom" },
+      modelIDs: ["gpt-5.5"],
       modelsDev: {
         data: {
           openai: {
@@ -179,8 +180,124 @@ describe("provider generator", () => {
       },
     })
 
-    expect(result.modelConfirmations["gpt5.5-shenye"]).toBe(true)
-    expect(result.provider.models["gpt5.5-shenye"].limit).toBeUndefined()
+    expect(result.provider.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+    expect(result.modelResolutions["gpt-5.5"].supportsGpt5LongContext).toBe(true)
+  })
+
+  test("can opt into GPT-5 long context limits", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "123456",
+      name: "Custom",
+      apiKey: { type: "file", path: "~/.secrets/custom" },
+      modelIDs: ["gpt-5.5"],
+      gpt5LongContext: true,
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From Models.dev",
+                limit: { context: 1050000, input: 922000, output: 128000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.provider.models["gpt-5.5"].limit).toEqual({ context: 1050000, input: 922000, output: 128000 })
+  })
+
+  test("fills missing input when defaulting GPT-5 long context off", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom-openai",
+      name: "Custom OpenAI",
+      apiKey: { type: "file", path: "~/.secrets/custom" },
+      modelIDs: ["gpt-5.5"],
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From Models.dev",
+                limit: { context: 1000000, output: 128000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.provider.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+  })
+
+  test("defaults GPT-5 long context off when metadata comes from another provider", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom-openai",
+      name: "Custom OpenAI",
+      apiKey: { type: "file", path: "~/.secrets/custom" },
+      modelIDs: ["gpt-5.5"],
+      modelsDev: {
+        data: {
+          opencode: {
+            id: "opencode",
+            name: "OpenCode",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From OpenCode",
+                limit: { context: 1050000, input: 922000, output: 128000 },
+              },
+            },
+          },
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {},
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelResolutions["gpt-5.5"].supportsGpt5LongContext).toBe(true)
+    expect(result.provider.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+  })
+
+  test("does not use custom suffixes as model aliases", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom-suffix",
+      name: "Custom Suffix",
+      apiKey: { type: "file", path: "~/.secrets/custom-suffix" },
+      modelIDs: ["gpt5.5-custom"],
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": {
+                id: "gpt-5.5",
+                name: "GPT-5.5 From Models.dev",
+                limit: { context: 1050000, input: 922000, output: 128000 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["gpt5.5-custom"]).toBe(true)
+    expect(result.provider.models["gpt5.5-custom"].limit).toBeUndefined()
     expect(result.warnings[0]).toContain("no model limit or capabilities were guessed")
   })
 
@@ -286,9 +403,35 @@ describe("provider generator", () => {
 
     expect(result.modelConfirmations["gpt-5.4"]).toBe(false)
     expect(result.provider.models["gpt-5.4"].name).toBe("GPT-5.4 From Models.dev")
-    expect(result.provider.models["gpt-5.4"].limit?.context).toBe(1050000)
+    expect(result.provider.models["gpt-5.4"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
     expect(result.provider.models["gpt-5.4"].variants?.low?.reasoningEffort).toBe("low")
     expect(result.modelResolutions["gpt-5.4"].sources.some((source) => source.type === "models.dev")).toBe(true)
+  })
+
+  test.each(["gpt-5", "gpt-5.4-mini", "unknown-gpt-5.5"])("does not apply GPT-5 long context preset to %s", async (modelID) => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      name: "Custom",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: [modelID],
+      gpt5LongContext: true,
+      modelsDev: {
+        data: {
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5": { id: "gpt-5", name: "GPT-5", limit: { context: 400000, input: 272000, output: 128000 } },
+              "gpt-5.4-mini": { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", limit: { context: 400000, input: 272000, output: 128000 } },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.provider.models[modelID].limit?.context).not.toBe(1050000)
+    expect(result.modelResolutions[modelID].supportsGpt5LongContext).toBe(false)
   })
 
   test("uses openai-compatible npm for explicitly selected gemini proxy", async () => {

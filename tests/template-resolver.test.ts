@@ -208,11 +208,11 @@ describe("template resolver", () => {
     }
   })
 
-  test("does not use provider suffixes to find metadata", async () => {
+  test("does not use custom suffixes to find metadata", async () => {
     const result = await resolveModelTemplate({
       endpointKind: "openai-compatible",
-      providerID: "shenye",
-      modelID: "gpt-5.5-shenye",
+      providerID: "custom-suffix",
+      modelID: "gpt-5.5-custom",
       modelsDev: { data: modelsDevData as any },
     })
 

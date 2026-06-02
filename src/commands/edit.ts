@@ -4,6 +4,7 @@ import { defaultSecretFilePath } from "../core/secret-file.js"
 import { updateModel, updateProvider } from "../core/provider-editor.js"
 import { isRecord } from "../core/object-utils.js"
 import type { EndpointKind, ModelDraft, ProviderDraft } from "../core/types.js"
+import { canUseGpt5LongContextPreset, gpt5LimitForLongContext } from "../core/model-limit-presets.js"
 import {
   loadConfigForCommand,
   parseModelRef,
@@ -25,7 +26,9 @@ export type EditProviderCommandOptions = MutatingCommandOptions &
 export type EditModelCommandOptions = MutatingCommandOptions & {
   name?: string
   context?: string
+  input?: string
   output?: string
+  gpt5LongContext?: boolean
   reasoning?: boolean
   toolCall?: boolean
   temperature?: boolean
@@ -114,11 +117,20 @@ export async function editModelCommand(modelRef: string, options: EditModelComma
 
   if (options.name !== undefined) patch.name = options.name
   const context = parseNumberOption(options.context, "--context")
+  const input = parseNumberOption(options.input, "--input")
   const output = parseNumberOption(options.output, "--output")
-  if (context !== undefined || output !== undefined) {
+  if (options.gpt5LongContext !== undefined && (context !== undefined || input !== undefined || output !== undefined)) {
+    throw new Error("Use either --gpt-5-long-context/--no-gpt-5-long-context or manual --context/--input/--output limits, not both")
+  }
+  if (options.gpt5LongContext !== undefined) {
+    if (!canUseGpt5LongContextPreset(modelID)) throw new Error(`Model "${providerID}/${modelID}" does not support the GPT-5 long context preset`)
+    patch.limit = gpt5LimitForLongContext(options.gpt5LongContext)
+  }
+  if (context !== undefined || input !== undefined || output !== undefined) {
     const currentLimit = isRecord(current.limit) ? current.limit : {}
     patch.limit = {
       context: context ?? (typeof currentLimit.context === "number" ? currentLimit.context : 0),
+      ...(input !== undefined || typeof currentLimit.input === "number" ? { input: input ?? (currentLimit.input as number) } : {}),
       output: output ?? (typeof currentLimit.output === "number" ? currentLimit.output : 0),
     }
   }

@@ -35,6 +35,7 @@ import { defaultSecretFilePath, expandHomePath } from "../src/core/secret-file.j
 import { validateCommand } from "../src/commands/validate.js"
 import { instructionRefForPromptFile, promptRefForFile } from "../src/core/prompt-manager.js"
 import type { ValidationResult } from "../src/core/config-writer.js"
+import { clearModelsDevCache } from "../src/core/models-dev.js"
 
 function valid(): ValidationResult {
   return { valid: true, diagnostics: [] }
@@ -61,6 +62,22 @@ function ocfgDataPath() {
   return path.join(process.env.HOME, ".config", "ocfg")
 }
 
+function stubOpenAIGpt5Metadata() {
+  vi.stubGlobal("fetch", async () => new Response(JSON.stringify({
+    openai: {
+      id: "openai",
+      name: "OpenAI",
+      models: {
+        "gpt-5.5": {
+          id: "gpt-5.5",
+          name: "GPT-5.5",
+          limit: { context: 1050000, input: 922000, output: 128000 },
+        },
+      },
+    },
+  }), { status: 200 }))
+}
+
 describe("commands", () => {
   let exitCode: string | number | undefined
   let log: ReturnType<typeof vi.spyOn>
@@ -76,6 +93,7 @@ describe("commands", () => {
     log = vi.spyOn(console, "log").mockImplementation(() => undefined)
     error = vi.spyOn(console, "error").mockImplementation(() => undefined)
     warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    clearModelsDevCache()
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({}), { status: 200 }))
   })
 
@@ -138,6 +156,67 @@ describe("commands", () => {
     expect(config.provider.custom.npm).toBe("@ai-sdk/google")
     expect(config.provider.custom.options.apiKey).toBe(`{file:${defaultSecretFilePath("custom")}}`)
     await expect(readFile(expandHomePath(defaultSecretFilePath("custom")), "utf8")).resolves.toBe("sk-gemini-test")
+  })
+
+  test("add provider defaults GPT-5 long context off", async () => {
+    stubOpenAIGpt5Metadata()
+    const filePath = await tempFile()
+
+    await addProviderCommand("custom", {
+      configPath: filePath,
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
+      model: ["gpt-5.5"],
+      validate: valid,
+    })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+  })
+
+  test("add provider fills missing GPT-5 input limit", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({
+      openai: {
+        id: "openai",
+        name: "OpenAI",
+        models: {
+          "gpt-5.5": {
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            limit: { context: 1000000, output: 128000 },
+          },
+        },
+      },
+    }), { status: 200 }))
+    const filePath = await tempFile()
+
+    await addProviderCommand("custom", {
+      configPath: filePath,
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
+      model: ["gpt-5.5"],
+      validate: valid,
+    })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
+  })
+
+  test("add provider can enable GPT-5 long context", async () => {
+    stubOpenAIGpt5Metadata()
+    const filePath = await tempFile()
+
+    await addProviderCommand("custom", {
+      configPath: filePath,
+      channelType: "openai-compatible",
+      apiKey: "sk-test",
+      model: ["gpt-5.5"],
+      gpt5LongContext: true,
+      validate: valid,
+    })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.models["gpt-5.5"].limit).toEqual({ context: 1050000, input: 922000, output: 128000 })
   })
 
   test("add provider reports missing metadata warnings", async () => {
@@ -256,6 +335,43 @@ describe("commands", () => {
     const config = parse(await readFile(filePath, "utf8"))
     expect(config.provider.custom.models.model.name).toBe("Model")
     expect(config.provider.custom.models.model.limit).toEqual({ context: 100, output: 20 })
+  })
+
+  test("edit model preserves existing input limit", async () => {
+    const filePath = await writeConfig(`{
+  "provider": {
+    "custom": {
+      "models": { "model": { "limit": { "context": 1050000, "input": 922000, "output": 128000 } } }
+    }
+  }
+}
+`)
+
+    await editModelCommand("custom/model", { configPath: filePath, context: "400000", validate: valid })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.custom.models.model.limit).toEqual({ context: 400000, input: 922000, output: 128000 })
+  })
+
+  test("edit model toggles GPT-5 long context preset", async () => {
+    const filePath = await writeConfig(`{
+  "provider": {
+    "openai": {
+      "models": { "gpt-5.5": { "limit": { "context": 400000, "input": 272000, "output": 128000 } } }
+    }
+  }
+}
+`)
+
+    await editModelCommand("openai/gpt-5.5", { configPath: filePath, gpt5LongContext: true, validate: valid })
+
+    let config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.openai.models["gpt-5.5"].limit).toEqual({ context: 1050000, input: 922000, output: 128000 })
+
+    await editModelCommand("openai/gpt-5.5", { configPath: filePath, gpt5LongContext: false, validate: valid })
+
+    config = parse(await readFile(filePath, "utf8"))
+    expect(config.provider.openai.models["gpt-5.5"].limit).toEqual({ context: 400000, input: 272000, output: 128000 })
   })
 
   test("delete provider requires exact token when referenced", async () => {

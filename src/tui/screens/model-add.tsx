@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import { Text } from "ink"
 import { detectModels, type DetectedModel } from "../../core/model-detector.js"
 import { loadModelsDev } from "../../core/models-dev.js"
-import { createProviderDraftFromEndpoint, type GeneratedProviderDraft } from "../../core/provider-generator.js"
+import { applyGeneratedGpt5LongContext, createProviderDraftFromEndpoint, generatedSupportsGpt5LongContext, type GeneratedProviderDraft } from "../../core/provider-generator.js"
 import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { configuredModelIDs, selectableDetectedModels, splitExistingModelIDs } from "../model-add.js"
@@ -15,11 +15,11 @@ import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodeNotice,
 
 type Step = "choose" | "input" | "detecting" | "select" | "review" | "loading"
 
-const reviewActions = ["view-diff", "back"] as const
+type ReviewAction = "toggle-gpt-5-long-context" | "view-diff" | "back"
 
 function summarizeModel(model: ModelDraft, t: ReturnType<typeof useTuiText>) {
   return t("model.summary", {
-    limit: model.limit ? `${model.limit.context}/${model.limit.output}` : t("model.missingLimit"),
+    limit: model.limit ? `${model.limit.context}/${model.limit.input ?? t("common.missing")}/${model.limit.output}` : t("model.missingLimit"),
     reasoning: t(model.reasoning ? "common.true" : "common.false"),
     tools: t(model.tool_call ? "common.true" : "common.false"),
   })
@@ -47,6 +47,7 @@ export function ModelAddScreen(props: {
   const [detectedModels, setDetectedModels] = useState<DetectedModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
   const [generated, setGenerated] = useState<GeneratedProviderDraft>()
+  const [gpt5LongContext, setGpt5LongContext] = useState(false)
   const [error, setError] = useState<string>()
   const [metadataWarnings, setMetadataWarnings] = useState<string[]>([])
   const keybinds = useTuiKeybinds()
@@ -77,6 +78,7 @@ export function ModelAddScreen(props: {
         baseURL,
         apiKey: providerApiKeyRef(props.provider),
         modelIDs: newModelIDs,
+        gpt5LongContext,
         modelsDev: { data: modelsDevData },
       })
       setGenerated(result)
@@ -137,6 +139,10 @@ export function ModelAddScreen(props: {
     return rows.flatMap((row) => row.kind === "item" && !row.item.disabled ? [row.item.id] : [])
   }
 
+  function reviewActions(): ReviewAction[] {
+    return generatedSupportsGpt5LongContext(generated) ? ["toggle-gpt-5-long-context", "view-diff", "back"] : ["view-diff", "back"]
+  }
+
   function toggleSelectedModel(modelID = selectedMenuItem()?.id) {
     if (!modelID || existingModelIDs.has(modelID)) return
     setSelectedModels((current) => {
@@ -171,7 +177,7 @@ export function ModelAddScreen(props: {
       }]
     }
     const modelItems = generated ? Object.entries(generated.provider.models).map(([modelID, model]) => ({ id: `model:${modelID}`, label: modelID, description: summarizeModel(model, t), disabled: true })) : []
-    return [{ title: t("model.resolved"), items: modelItems }, { title: t("model.actions"), items: reviewActions.map((action) => ({ id: action, label: action === "view-diff" ? t("model.viewDiff") : t("common.back") })) }]
+    return [{ title: t("model.resolved"), items: modelItems }, { title: t("model.actions"), items: reviewActions().map((action) => ({ id: action, label: action === "toggle-gpt-5-long-context" ? t("model.gpt5LongContext") : action === "view-diff" ? t("model.viewDiff") : t("common.back"), meta: action === "toggle-gpt-5-long-context" ? t(gpt5LongContext ? "common.true" : "common.false") : undefined })) }]
   }
 
   function runSelected(index = selected) {
@@ -186,7 +192,12 @@ export function ModelAddScreen(props: {
     }
     if (step === "review" && generated) {
       const modelCount = Object.keys(generated.provider.models).length
-      const action = reviewActions[index - modelCount]
+      const action = reviewActions()[index - modelCount]
+      if (action === "toggle-gpt-5-long-context") {
+        const enabled = !gpt5LongContext
+        setGpt5LongContext(enabled)
+        setGenerated(applyGeneratedGpt5LongContext(generated, enabled))
+      }
       if (action === "view-diff") void props.onReviewDiff(generated)
       if (action === "back") setStep(detectedModels.length > 0 ? "select" : "input")
     }
