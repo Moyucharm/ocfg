@@ -50,5 +50,8 @@ describe("TUI text editor", () => {
     expect(isBackwardDeleteInput("\x7f", { delete: true })).toBe(true)
     expect(isForwardDeleteInput("\x7f", { delete: true })).toBe(false)
     expect(isForwardDeleteInput("", { delete: true })).toBe(false)
+    expect(isBackwardDeleteInput("\x1B[3~", { delete: true })).toBe(false)
+    expect(isForwardDeleteInput("\x1B[3~", { delete: true })).toBe(true)
+    expect(isForwardDeleteInput("[3~", { delete: true })).toBe(true)
   })
 })

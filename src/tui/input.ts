@@ -44,12 +44,16 @@ export function deleteEditableTextInputForward(current: EditableTextInput) {
   return deleteForward(current.value, current.cursor)
 }
 
+function isExplicitForwardDeleteInput(input: string) {
+  return input === "\x1B[3~" || input === "[3~"
+}
+
 export function isBackwardDeleteInput(input: string, key: DeleteInputKey) {
-  return key.backspace === true || key.delete === true || input === "\b" || input === "\x7f" || input === "\x1B\b" || input === "\x1B\x7f"
+  return !isExplicitForwardDeleteInput(input) && (key.backspace === true || key.delete === true || input === "\b" || input === "\x7f" || input === "\x1B\b" || input === "\x1B\x7f")
 }
 
 export function isForwardDeleteInput(input: string, key: DeleteInputKey) {
-  return (input === "\x1B[3~" || input === "[3~") && !isBackwardDeleteInput(input, key)
+  return isExplicitForwardDeleteInput(input) && !isBackwardDeleteInput(input, key)
 }
 
 export function useTuiInput(handler: InputHandler) {
