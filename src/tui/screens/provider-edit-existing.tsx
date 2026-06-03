@@ -4,12 +4,11 @@ import { isRecord } from "../../core/object-utils.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import type { EndpointKind } from "../../core/types.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
-import { maskSecret, menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { maskSecret, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "name" | "base-url" | "api-key" | "channel-type" | "cache"
 type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
@@ -40,7 +39,7 @@ export function ProviderEditExistingScreen(props: {
   const [query, setQuery] = useState("")
   const [channelTypeIndex, setChannelTypeIndex] = useState(defaultKindIndex)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
-  const [inputValue, setInputValue] = useState("")
+  const [inputValue, setInputValue] = useState(() => editableTextInput())
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
 
@@ -91,21 +90,21 @@ export function ProviderEditExistingScreen(props: {
       setQuery("")
       return
     }
-    if (field === "name") setInputValue(draft.name ?? currentName)
-    if (field === "base-url") setInputValue(draft.baseURL ?? currentBaseURL)
-    if (field === "api-key") setInputValue("")
+    if (field === "name") setInputValue(editableTextInput(draft.name ?? currentName))
+    if (field === "base-url") setInputValue(editableTextInput(draft.baseURL ?? currentBaseURL))
+    if (field === "api-key") setInputValue(editableTextInput())
     setMode(field)
   }
 
   function savePrompt() {
-    const value = inputValue.trim()
+    const value = inputValue.value.trim()
     if (mode === "name") setDraft((current) => ({ ...current, name: value }))
     if (mode === "base-url") setDraft((current) => ({ ...current, baseURL: value }))
     if (mode === "api-key") {
       if (!value) return setError(t("provider.error.apiKeyRequired"))
       setDraft((current) => ({ ...current, apiKeyValue: value }))
     }
-    setInputValue("")
+    setInputValue(editableTextInput())
     setMode("menu")
   }
 
@@ -134,30 +133,22 @@ export function ProviderEditExistingScreen(props: {
     if (["name", "base-url", "api-key"].includes(mode)) {
       if (matchesKeybind("cancel", input, key, keybinds)) {
         setMode("menu")
-        setInputValue("")
+        setInputValue(editableTextInput())
         setError(undefined)
         return
       }
-      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
+      else if (key.delete) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendPrintableInput(current, input))
+      else setInputValue((current) => insertEditableTextInput(current, input))
       return
     }
 
     const groups = mode === "menu" ? menuGroups : selectGroups
     const rows = openCodeMenuRows(groups, query)
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true, selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        if (mode === "menu") runMenuIndex(clicked)
-        else runSelectIndex(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       if (mode === "menu") props.onBack()
       else {
@@ -189,7 +180,8 @@ export function ProviderEditExistingScreen(props: {
       <OpenCodePrompt
         title={t("provider.title.edit")}
         label={mode === "name" ? t("provider.displayName") : mode === "base-url" ? t("provider.baseURL") : t("provider.apiKey")}
-        value={inputValue}
+        value={inputValue.value}
+        cursor={inputValue.cursor}
         masked={mode === "api-key"}
         error={error}
         hint={mode === "api-key" ? t("provider.hint.storedAt", { path: defaultSecretFilePath(props.providerID) }) : undefined}

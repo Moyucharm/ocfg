@@ -1,8 +1,7 @@
 import type { Dispatch, SetStateAction } from "react"
 import { matchesKeybind, useTuiKeybinds } from "./keybinds.js"
-import { parseTuiMouseEvent } from "./mouse.js"
 import { useTuiInput } from "./input.js"
-import { menuItemIndexFromMouse, openCodeMenuRows, type OpenCodeMenuGroup } from "./ui.js"
+import { openCodeMenuRows, type OpenCodeMenuGroup } from "./ui.js"
 
 export function openCodeMenuItemCount(groups: OpenCodeMenuGroup[], query = "") {
   return openCodeMenuRows(groups, query).filter((row) => row.kind === "item").length
@@ -16,8 +15,6 @@ export function useOpenCodeMenuInput(options: {
   onBack?: () => void
   onQuit?: () => void
   query?: string
-  wheel?: boolean
-  mouse?: { showSearch?: boolean; hasFooter?: boolean; hasDetail?: boolean }
 }) {
   const keybinds = useTuiKeybinds()
   const query = options.query ?? ""
@@ -25,19 +22,6 @@ export function useOpenCodeMenuInput(options: {
   useTuiInput((input, key) => {
     const rows = openCodeMenuRows(options.groups, query)
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (options.wheel && mouse.kind === "wheel") {
-        options.setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-        return
-      }
-      const clicked = menuItemIndexFromMouse(mouse, rows, { ...options.mouse, selectedIndex: options.selected })
-      if (clicked !== undefined) {
-        options.setSelected(clicked)
-        options.onSelect(clicked)
-      }
-      return
-    }
 
     if (options.onQuit && matchesKeybind("quit", input, key, keybinds)) {
       options.onQuit()

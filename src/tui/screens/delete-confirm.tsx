@@ -1,10 +1,9 @@
 import React, { useState } from "react"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { DeleteTargetState } from "../types.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 const actions = ["Confirm", "Cancel"] as const
 
@@ -15,7 +14,7 @@ export function DeleteConfirmScreen(props: {
 }) {
   const t = useTuiText()
   const [selected, setSelected] = useState(0)
-  const [token, setToken] = useState("")
+  const [token, setToken] = useState(() => editableTextInput())
   const keybinds = useTuiKeybinds()
   const requiresToken = props.target.references.length > 0
   const targetLabel = props.target.kind === "provider" ? props.target.providerID : `${props.target.providerID}/${props.target.modelID}`
@@ -36,19 +35,12 @@ export function DeleteConfirmScreen(props: {
   useTuiInput((input, key) => {
     if (requiresToken) {
       if (matchesKeybind("cancel", input, key, keybinds)) return props.onCancel()
-      if (key.backspace || key.delete) setToken((current) => current.slice(0, -1))
-      else if (matchesKeybind("confirm", input, key, keybinds)) props.onConfirm(token.trim())
-      else setToken((current) => appendPrintableInput(current, input))
-      return
-    }
-    const rows = openCodeMenuRows(groups, "")
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
+      if (matchesKeybind("left", input, key, keybinds)) setToken((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setToken((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setToken(deleteEditableTextInputBackward)
+      else if (key.delete) setToken(deleteEditableTextInputForward)
+      else if (matchesKeybind("confirm", input, key, keybinds)) props.onConfirm(token.value.trim())
+      else setToken((current) => insertEditableTextInput(current, input))
       return
     }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) return props.onCancel()
@@ -62,7 +54,8 @@ export function DeleteConfirmScreen(props: {
       <OpenCodePrompt
         title={t("delete.title", { kind: kindLabel })}
         label={t("delete.typeToken", { token: expectedToken })}
-        value={token}
+        value={token.value}
+        cursor={token.cursor}
         error={props.target.error}
         hint={t("delete.referencedBy", { refs: props.target.references.join(", ") })}
         footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]}

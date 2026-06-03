@@ -1,7 +1,7 @@
 import React, { useState } from "react"
 import { normalizePluginPackage } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { OpenCodePrompt } from "../ui.js"
 
@@ -11,13 +11,13 @@ export function PluginAddScreen(props: {
   onBack: () => void
 }) {
   const t = useTuiText()
-  const [value, setValue] = useState("")
+  const [value, setValue] = useState(() => editableTextInput())
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
 
   function save() {
     try {
-      const nextValue = props.kind === "npm" ? normalizePluginPackage(value) : value.trim()
+      const nextValue = props.kind === "npm" ? normalizePluginPackage(value.value) : value.value.trim()
       if (!nextValue) throw new Error(t("plugin.localPathRequired"))
       props.onAdd(nextValue)
     } catch (caught) {
@@ -30,11 +30,14 @@ export function PluginAddScreen(props: {
       props.onBack()
       return
     }
-    if (key.backspace || key.delete) setValue((current) => current.slice(0, -1))
+    if (matchesKeybind("left", input, key, keybinds)) setValue((current) => moveEditableTextInput(current, "left"))
+    else if (matchesKeybind("right", input, key, keybinds)) setValue((current) => moveEditableTextInput(current, "right"))
+    else if (key.backspace) setValue(deleteEditableTextInputBackward)
+    else if (key.delete) setValue(deleteEditableTextInputForward)
     else if (matchesKeybind("confirm", input, key, keybinds)) save()
     else {
       setError(undefined)
-      setValue((current) => appendPrintableInput(current, input))
+      setValue((current) => insertEditableTextInput(current, input))
     }
   })
 
@@ -42,7 +45,8 @@ export function PluginAddScreen(props: {
     <OpenCodePrompt
       title={props.kind === "npm" ? t("plugin.installNpm") : t("plugin.installLocal")}
       label={props.kind === "npm" ? t("plugin.package") : t("plugin.localPath")}
-      value={value}
+      value={value.value}
+      cursor={value.cursor}
       error={error}
       hint={props.kind === "npm" ? t("plugin.packageHint") : t("plugin.localPathHint")}
       footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]}

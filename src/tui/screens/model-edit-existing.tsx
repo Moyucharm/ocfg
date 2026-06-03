@@ -2,11 +2,10 @@ import React, { useState } from "react"
 import { canUseGpt5LongContextPreset, gpt5LongContextState } from "../../core/model-limit-presets.js"
 import { isRecord } from "../../core/object-utils.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { ExistingModelEditDraft } from "../model-edit-existing.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Field = "name" | "context" | "input" | "output" | "gpt5-long-context" | "reasoning" | "tool-call" | "temperature" | "attachment" | "review"
 type Mode = "menu" | "name" | "context" | "input" | "output" | "boolean" | "gpt5-preset"
@@ -55,7 +54,7 @@ export function ModelEditExistingScreen(props: {
   const [mode, setMode] = useState<Mode>("menu")
   const [selected, setSelected] = useState(0)
   const [draft, setDraft] = useState<ExistingModelEditDraft>({})
-  const [inputValue, setInputValue] = useState("")
+  const [inputValue, setInputValue] = useState(() => editableTextInput())
   const [booleanField, setBooleanField] = useState<BooleanField>("reasoning")
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
@@ -92,19 +91,19 @@ export function ModelEditExistingScreen(props: {
     setError(undefined)
     if (field === "review") return props.onComplete(draft)
     if (field === "name") {
-      setInputValue(draft.name ?? currentName)
+      setInputValue(editableTextInput(draft.name ?? currentName))
       setMode("name")
     }
     if (field === "context") {
-      setInputValue(draft.context === undefined ? limitValue(props.model, "context") : String(draft.context))
+      setInputValue(editableTextInput(draft.context === undefined ? limitValue(props.model, "context") : String(draft.context)))
       setMode("context")
     }
     if (field === "input") {
-      setInputValue(draft.input === undefined ? limitValue(props.model, "input") : String(draft.input))
+      setInputValue(editableTextInput(draft.input === undefined ? limitValue(props.model, "input") : String(draft.input)))
       setMode("input")
     }
     if (field === "output") {
-      setInputValue(draft.output === undefined ? limitValue(props.model, "output") : String(draft.output))
+      setInputValue(editableTextInput(draft.output === undefined ? limitValue(props.model, "output") : String(draft.output)))
       setMode("output")
     }
     if (field === "gpt5-long-context") {
@@ -121,11 +120,11 @@ export function ModelEditExistingScreen(props: {
 
   function savePrompt() {
     try {
-      if (mode === "name") setDraft((current) => ({ ...current, name: inputValue.trim() }))
-      if (mode === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.trim(), t("model.error.positiveInteger", { label: t("model.field.context") })) }))
-      if (mode === "input") setDraft((current) => ({ ...current, input: parsePositiveInteger(inputValue.trim(), t("model.error.positiveInteger", { label: t("model.field.input") })) }))
-      if (mode === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.trim(), t("model.error.positiveInteger", { label: t("model.field.output") })) }))
-      setInputValue("")
+      if (mode === "name") setDraft((current) => ({ ...current, name: inputValue.value.trim() }))
+      if (mode === "context") setDraft((current) => ({ ...current, context: parsePositiveInteger(inputValue.value.trim(), t("model.error.positiveInteger", { label: t("model.field.context") })) }))
+      if (mode === "input") setDraft((current) => ({ ...current, input: parsePositiveInteger(inputValue.value.trim(), t("model.error.positiveInteger", { label: t("model.field.input") })) }))
+      if (mode === "output") setDraft((current) => ({ ...current, output: parsePositiveInteger(inputValue.value.trim(), t("model.error.positiveInteger", { label: t("model.field.output") })) }))
+      setInputValue(editableTextInput())
       setMode("menu")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -164,29 +163,21 @@ export function ModelEditExistingScreen(props: {
     if (["name", "context", "input", "output"].includes(mode)) {
       if (matchesKeybind("cancel", input, key, keybinds)) {
         setMode("menu")
-        setInputValue("")
+        setInputValue(editableTextInput())
         setError(undefined)
         return
       }
-      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
+      else if (key.delete) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendPrintableInput(current, input))
+      else setInputValue((current) => insertEditableTextInput(current, input))
       return
     }
     const groups = mode === "boolean" ? booleanGroups : mode === "gpt5-preset" ? gpt5PresetGroups : menuGroups
     const rows = openCodeMenuRows(groups, "")
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        if (mode === "boolean") runBooleanIndex(clicked)
-        else if (mode === "gpt5-preset") runGpt5PresetIndex(clicked)
-        else runMenuIndex(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       if (mode === "menu") props.onBack()
       else setMode("menu")
@@ -202,7 +193,7 @@ export function ModelEditExistingScreen(props: {
   })
 
   if (mode === "name" || mode === "context" || mode === "input" || mode === "output") {
-    return <OpenCodePrompt title={t("model.title.editId", { id: props.modelID })} label={mode === "name" ? t("provider.displayName") : mode === "context" ? t("model.field.context") : mode === "input" ? t("model.field.input") : t("model.field.output")} value={inputValue} error={error} footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]} />
+    return <OpenCodePrompt title={t("model.title.editId", { id: props.modelID })} label={mode === "name" ? t("provider.displayName") : mode === "context" ? t("model.field.context") : mode === "input" ? t("model.field.input") : t("model.field.output")} value={inputValue.value} cursor={inputValue.cursor} error={error} footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]} />
   }
 
   return (

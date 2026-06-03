@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { parseTuiMouseEvent } from "../src/tui/mouse.js"
 import { resolveTuiTheme } from "../src/tui/theme.js"
-import { centeredFramePadding, formatMenuLine, maskSecret, menuItemIndexFromMouse, openCodeMenuItemColor, openCodeMenuRows, openCodeMenuViewport, textCellWidth, type OpenCodeMenuGroup } from "../src/tui/ui.js"
+import { centeredFramePadding, formatMenuLine, maskSecret, openCodeMenuItemColor, openCodeMenuRows, openCodeMenuViewport, textCellWidth, type OpenCodeMenuGroup } from "../src/tui/ui.js"
 
 describe("TUI mouse helpers", () => {
   test("parses SGR mouse click and wheel events", () => {
@@ -9,20 +9,6 @@ describe("TUI mouse helpers", () => {
     expect(parseTuiMouseEvent("[<0;12;7m")).toEqual({ kind: "release", button: "left", x: 12, y: 7 })
     expect(parseTuiMouseEvent("[<64;10;4M")).toEqual({ kind: "wheel", button: "wheel-up", x: 10, y: 4 })
     expect(parseTuiMouseEvent("[<65;10;4M")).toEqual({ kind: "wheel", button: "wheel-down", x: 10, y: 4 })
-  })
-
-  test("maps mouse rows to visible OpenCode menu items", () => {
-    const groups: OpenCodeMenuGroup[] = [
-      { title: "Commands", items: [{ id: "a", label: "Alpha" }] },
-      { title: "Config", items: [{ id: "b", label: "Beta" }] },
-    ]
-    const rows = openCodeMenuRows(groups, "")
-
-    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 4 }, rows)).toBe(0)
-    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 7 }, rows)).toBe(1)
-    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 6 }, rows, { showSearch: true })).toBe(0)
-    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 9 }, rows, { showSearch: true })).toBe(1)
-    expect(menuItemIndexFromMouse({ kind: "press", button: "right", x: 1, y: 4 }, rows)).toBeUndefined()
   })
 
   test("keeps selected menu items inside a clipped viewport", () => {
@@ -37,16 +23,6 @@ describe("TUI mouse helpers", () => {
     expect(viewport.hiddenBefore).toBe(true)
     expect(visibleItemIndexes).toContain(8)
     expect(visibleItemIndexes.length).toBeLessThanOrEqual(4)
-  })
-
-  test("maps mouse rows through a clipped menu viewport", () => {
-    const groups: OpenCodeMenuGroup[] = [{
-      title: "Models",
-      items: Array.from({ length: 10 }, (_, index) => ({ id: `m${index}`, label: `model-${index}` })),
-    }]
-    const rows = openCodeMenuRows(groups, "")
-
-    expect(menuItemIndexFromMouse({ kind: "press", button: "left", x: 1, y: 3 }, rows, { selectedIndex: 8, maxHeight: 4 })).toBe(5)
   })
 
   test("centers the fixed-width TUI frame when the terminal is wider", () => {

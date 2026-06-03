@@ -58,19 +58,17 @@ import { ModelEditScreen } from "./screens/model-edit.js"
 import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
-import { LanguageScreen } from "./screens/language.js"
 import { ToolsScreen } from "./screens/tools.js"
 import { ToolsResultScreen } from "./screens/tools-result.js"
-import { TuiI18nProvider, translate, type TuiLanguage } from "./i18n.js"
+import { nextTuiLanguage, TuiI18nProvider, translate, type TuiLanguage } from "./i18n.js"
 import { useTuiInput } from "./input.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import { TuiKeybindProvider } from "./keybinds.js"
-import { useMouseCapture } from "./mouse.js"
 import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference } from "./preferences.js"
 import { TuiThemeProvider } from "./theme.js"
-import { OpenCodeFrame, OpenCodeNotice } from "./ui.js"
+import { OpenCodeBusyDialog, OpenCodeFrame, OpenCodeNotice } from "./ui.js"
 import { isRecord } from "../core/object-utils.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, ToolsResultState, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
@@ -81,12 +79,13 @@ export function App() {
   const routeHistory = useRef<TuiRoute[]>([])
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
   const [message, setMessage] = useState<string>()
+  const [busyMessage, setBusyMessage] = useState<string>()
   const [toolsRefreshKey, setToolsRefreshKey] = useState(0)
   const [toolsResult, setToolsResult] = useState<ToolsResultState>()
   const [preferenceWarning, setPreferenceWarning] = useState<string>()
   const [preferencePath, setPreferencePath] = useState<string>()
   const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
-  const [providerListMode, setProviderListMode] = useState<ProviderListMode>("add")
+  const [providerListMode, setProviderListMode] = useState<ProviderListMode>("edit")
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
   const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
@@ -102,6 +101,7 @@ export function App() {
     targetPath: translate(defaultTuiPreferences.language, "diff.noTargetSelected"),
     diff: createConfigDiff("", ""),
   })
+  const languageWriteInFlight = useRef(false)
 
   function navigate(nextRoute: TuiRoute) {
     if (nextRoute === route) return
@@ -128,6 +128,20 @@ export function App() {
     return details.length > 0 ? `${base} ${details.join(" ")}` : base
   }
 
+  async function withBusy<T>(message: string, task: () => Promise<T>) {
+    setBusyMessage(message)
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    try {
+      return await task()
+    } finally {
+      setBusyMessage(undefined)
+    }
+  }
+
+  function withSaving<T>(task: () => Promise<T>) {
+    return withBusy(translate(tuiPreferences.language, "common.saving"), task)
+  }
+
   useEffect(() => {
     let active = true
     loadTuiPreferences().then((result) => {
@@ -141,8 +155,6 @@ export function App() {
     }
   }, [])
 
-  useMouseCapture(tuiPreferences.mouse)
-
   useTuiInput((input, key) => {
     if (key.escape && route === "home") exit()
   })
@@ -151,13 +163,11 @@ export function App() {
     setMessage(undefined)
     if (action === "doctor") navigate("doctor")
     if (action === "switch-config") navigate("select-config")
-    if (action === "switch-language") navigate("language")
     if (action === "manage-plugins") navigate("plugin-list")
     if (action === "manage-prompts") navigate("prompt-list")
     if (action === "tools") navigate("tools")
     if (action === "add-provider") {
-      setProviderListMode("add")
-      navigate("provider-list")
+      navigate("provider-edit")
     }
     if (action === "edit-provider") {
       setProviderListMode("edit")
@@ -171,17 +181,23 @@ export function App() {
   }
 
   async function selectLanguage(language: TuiLanguage) {
+    if (languageWriteInFlight.current || language === tuiPreferences.language) return
+    languageWriteInFlight.current = true
     setMessage(undefined)
     setTuiPreferences((current) => ({ ...current, language }))
     try {
-      await writeTuiLanguagePreference(language, preferencePath ? { path: preferencePath } : {})
+      await withBusy(translate(language, "common.saving"), () => writeTuiLanguagePreference(language, preferencePath ? { path: preferencePath } : {}))
       setPreferenceWarning(undefined)
       setMessage(translate(language, "language.saved"))
     } catch (caught) {
       setPreferenceWarning(translate(language, "language.saveFailed", { message: caught instanceof Error ? caught.message : String(caught) }))
     } finally {
-      goBack()
+      languageWriteInFlight.current = false
     }
+  }
+
+  function toggleLanguage() {
+    void selectLanguage(nextTuiLanguage(tuiPreferences.language))
   }
 
   function openDiffReview(review: DiffReviewState, returnRoute: TuiRoute, completedRoute: TuiRoute = returnRoute) {
@@ -227,36 +243,38 @@ export function App() {
   async function toggleExaSearch(currentlyEnabled: boolean) {
     setMessage(undefined)
     try {
-      if (currentlyEnabled) {
-        const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "0")
-        const base = translate(tuiPreferences.language, "tools.disabledMessage", { envTarget: envTargetLabel(envResult) })
+      await withSaving(async () => {
+        if (currentlyEnabled) {
+          const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "0")
+          const base = translate(tuiPreferences.language, "tools.disabledMessage", { envTarget: envTargetLabel(envResult) })
+          setToolsRefreshKey((current) => current + 1)
+          openToolsResult({ message: toolsEnvMessage(base), tone: "success" })
+          return
+        }
+
+        const target = config.target ?? locateConfig({ scope: config.scope })
+        const document = await readConfig(target)
+        if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+
+        const nextConfig = enableExaSearchPermissions(document.data)
+        if (!sameJSON(document.data, nextConfig)) {
+          const nextText = exaSearchConfigText(document, nextConfig)
+          const validation = await validateConfig(nextConfig, { relaxModelEnum: true })
+          if (validation.diagnostics.length > 0) throw new Error(validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+          const result = await writeConfigSafely({
+            document,
+            nextConfig,
+            nextText,
+            validate: () => validation,
+          })
+          if (result.diagnostics.length > 0) throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+        }
+
+        const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "1")
+        const base = translate(tuiPreferences.language, "tools.enabledMessage", { configPath: target.path, envTarget: envTargetLabel(envResult) })
         setToolsRefreshKey((current) => current + 1)
         openToolsResult({ message: toolsEnvMessage(base), tone: "success" })
-        return
-      }
-
-      const target = config.target ?? locateConfig({ scope: config.scope })
-      const document = await readConfig(target)
-      if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-
-      const nextConfig = enableExaSearchPermissions(document.data)
-      if (!sameJSON(document.data, nextConfig)) {
-        const nextText = exaSearchConfigText(document, nextConfig)
-        const validation = await validateConfig(nextConfig, { relaxModelEnum: true })
-        if (validation.diagnostics.length > 0) throw new Error(validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-        const result = await writeConfigSafely({
-          document,
-          nextConfig,
-          nextText,
-          validate: () => validation,
-        })
-        if (result.diagnostics.length > 0) throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-      }
-
-      const envResult = await writeUserEnvVar(OPENCODE_EXA_ENV, "1")
-      const base = translate(tuiPreferences.language, "tools.enabledMessage", { configPath: target.path, envTarget: envTargetLabel(envResult) })
-      setToolsRefreshKey((current) => current + 1)
-      openToolsResult({ message: toolsEnvMessage(base), tone: "success" })
+      })
     } catch (caught) {
       openToolsResult({ message: caught instanceof Error ? caught.message : String(caught), tone: "error" })
       setToolsRefreshKey((current) => current + 1)
@@ -347,8 +365,11 @@ export function App() {
 
   async function saveProvider(generated: GeneratedProviderDraft) {
     try {
-      const review = await prepareProviderWriteState(generated)
-      setDiffReview(await commitPreparedWrite(review))
+      const completedReview = await withSaving(async () => {
+        const review = await prepareProviderWriteState(generated)
+        return commitPreparedWrite(review)
+      })
+      setDiffReview(completedReview)
       setDiffReturnRoute("home")
       setDiffCompletedRoute("home")
       navigate("diff-review")
@@ -480,7 +501,7 @@ export function App() {
 
   async function installLocalPluginFromInput(sourcePath: string) {
     try {
-      const result = await installLocalPlugin(sourcePath, { scope: config.scope })
+      const result = await withSaving(() => installLocalPlugin(sourcePath, { scope: config.scope }))
       setMessage(translate(tuiPreferences.language, "plugin.localInstalled", { path: result.toPath }))
       completeFlow("plugin-list")
     } catch (caught) {
@@ -544,11 +565,7 @@ export function App() {
 
   async function toggleLocalPlugin(plugin: LocalPluginItem) {
     try {
-      if (plugin.status === "enabled") {
-        await disableLocalPlugin(plugin.fileName, { scope: config.scope })
-      } else {
-        await enableLocalPlugin(plugin.fileName, { scope: config.scope })
-      }
+      await withSaving(() => plugin.status === "enabled" ? disableLocalPlugin(plugin.fileName, { scope: config.scope }) : enableLocalPlugin(plugin.fileName, { scope: config.scope }))
       setMessage(undefined)
       completeFlow("plugin-list")
     } catch (caught) {
@@ -622,7 +639,7 @@ export function App() {
   async function savePromptContent(fileName: string, content: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await writePromptFileSafely(target, fileName, content)
+      const result = await withSaving(() => writePromptFileSafely(target, fileName, content))
       setMessage(promptWriteMessage("prompt.saved", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -633,7 +650,7 @@ export function App() {
   async function saveRuleContent(content: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await writeRuleFileSafely(target, content)
+      const result = await withSaving(() => writeRuleFileSafely(target, content))
       setMessage(promptWriteMessage("prompt.saved", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -644,7 +661,7 @@ export function App() {
   async function saveRuleProfileContent(fileName: string, content: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await writeRuleProfileSafely(target, fileName, content)
+      const result = await withSaving(() => writeRuleProfileSafely(target, fileName, content))
       setMessage(promptWriteMessage("prompt.saved", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -664,7 +681,7 @@ export function App() {
   async function applyRulesContent(content: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await writeRuleFileSafely(target, content)
+      const result = await withSaving(() => writeRuleFileSafely(target, content))
       setMessage(promptWriteMessage("prompt.saved", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -675,8 +692,10 @@ export function App() {
   async function switchRuleProfile(profile: RuleProfile) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const content = await readRuleProfile(target, profile.fileName)
-      const result = await writeRuleFileSafely(target, content)
+      const result = await withSaving(async () => {
+        const content = await readRuleProfile(target, profile.fileName)
+        return writeRuleFileSafely(target, content)
+      })
       setMessage(promptWriteMessage("prompt.switchedRuleConfig", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -687,7 +706,7 @@ export function App() {
   async function deleteRuleProfile(profile: RuleProfile) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await deleteRuleProfileSafely(target, profile.fileName)
+      const result = await withSaving(() => deleteRuleProfileSafely(target, profile.fileName))
       setMessage(promptWriteMessage("prompt.deleted", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -697,7 +716,7 @@ export function App() {
 
   async function saveInstructionContent(instruction: ConfigInstructionItem, content: string) {
     try {
-      const result = await writeInstructionFileSafely(instruction, content)
+      const result = await withSaving(() => writeInstructionFileSafely(instruction, content))
       setMessage(promptWriteMessage("prompt.saved", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -708,7 +727,7 @@ export function App() {
   async function reviewPromptGlobalApply(fileName: string, content: string, shouldWritePrompt: boolean) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      if (shouldWritePrompt) await writePromptFileSafely(target, fileName, content, { backup: false })
+      if (shouldWritePrompt) await withSaving(() => writePromptFileSafely(target, fileName, content, { backup: false }))
       const document = await readConfig(target)
       const nextConfig = addInstructionRef(document.data, instructionRefForPromptFile(fileName, target))
       const nextText = promptConfigText(document, nextConfig)
@@ -727,7 +746,7 @@ export function App() {
   async function reviewPromptApply(fileName: string, content: string, agentID: string, shouldWritePrompt: boolean) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      if (shouldWritePrompt) await writePromptFileSafely(target, fileName, content, { backup: false })
+      if (shouldWritePrompt) await withSaving(() => writePromptFileSafely(target, fileName, content, { backup: false }))
       const document = await readConfig(target)
       const nextConfig = setAgentPrompt(document.data, agentID, promptRefForFile(fileName, target), {
         description: `Uses ${fileName}`,
@@ -753,7 +772,7 @@ export function App() {
       const nextConfig = removePromptReferences(document.data, prompt.ref, instructionRefForPromptFile(prompt.fileName, target))
       const shouldWriteConfig = !sameJSON(document.data.agent, nextConfig.agent) || !sameJSON(document.data.instructions, nextConfig.instructions)
       if (!shouldWriteConfig) {
-        const result = await deletePromptFileSafely(target, prompt.fileName)
+        const result = await withSaving(() => deletePromptFileSafely(target, prompt.fileName))
         setMessage(promptWriteMessage("prompt.deleted", result))
         completeFlow("prompt-list")
         return
@@ -781,7 +800,7 @@ export function App() {
   async function deleteRule(rule: RuleFile) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
-      const result = await deleteRuleFileSafely(target)
+      const result = await withSaving(() => deleteRuleFileSafely(target))
       setMessage(promptWriteMessage("prompt.deleted", result))
       completeFlow("prompt-list")
     } catch (caught) {
@@ -899,7 +918,7 @@ export function App() {
   }
 
   async function confirmWrite() {
-    setDiffReview(await commitPreparedWrite(diffReview))
+    setDiffReview(await withSaving(() => commitPreparedWrite(diffReview)))
   }
 
   return (
@@ -910,8 +929,9 @@ export function App() {
             <Box flexDirection="column">
               {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
               {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
+              {busyMessage ? <OpenCodeBusyDialog message={busyMessage} /> : null}
 
-            {route === "home" ? <HomeScreen selection={config} onAction={handleHomeAction} onQuit={exit} /> : null}
+            {route === "home" ? <HomeScreen selection={config} language={tuiPreferences.language} onAction={handleHomeAction} onToggleLanguage={toggleLanguage} onQuit={exit} /> : null}
             {route === "select-config" ? (
               <SelectConfigScreen
                 selection={config}
@@ -923,14 +943,12 @@ export function App() {
               />
             ) : null}
             {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
-            {route === "language" ? <LanguageScreen currentLanguage={tuiPreferences.language} onSelect={(language) => void selectLanguage(language)} onBack={() => goBack()} /> : null}
             {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onBack={() => goBack()} /> : null}
             {route === "tools-result" && toolsResult ? <ToolsResultScreen result={toolsResult} onClose={closeToolsResult} /> : null}
             {route === "provider-list" ? (
               <ProviderListScreen
                 selection={config}
                 mode={providerListMode}
-                onAdd={() => navigate("provider-edit")}
                 onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
                 onBack={() => goBack()}
               />

@@ -2,10 +2,9 @@ import React, { useState } from "react"
 import { isRecord } from "../../core/object-utils.js"
 import type { PluginListItem, PluginOptions } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "options"
 
@@ -30,7 +29,7 @@ export function PluginEditScreen(props: {
   const t = useTuiText()
   const [mode, setMode] = useState<Mode>("menu")
   const [selected, setSelected] = useState(0)
-  const [inputValue, setInputValue] = useState(props.plugin.options ? JSON.stringify(props.plugin.options) : "{}")
+  const [inputValue, setInputValue] = useState(() => editableTextInput(props.plugin.options ? JSON.stringify(props.plugin.options) : "{}"))
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
 
@@ -46,7 +45,7 @@ export function PluginEditScreen(props: {
   function startAction(action: string) {
     setError(undefined)
     if (action === "options") {
-      setInputValue(props.plugin.options ? JSON.stringify(props.plugin.options) : "{}")
+      setInputValue(editableTextInput(props.plugin.options ? JSON.stringify(props.plugin.options) : "{}"))
       setMode("options")
       return
     }
@@ -56,7 +55,7 @@ export function PluginEditScreen(props: {
 
   function saveOptions() {
     try {
-      props.onSaveOptions(props.plugin.packageName, parseOptions(inputValue.trim() || "{}"))
+      props.onSaveOptions(props.plugin.packageName, parseOptions(inputValue.value.trim() || "{}"))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     }
@@ -74,27 +73,20 @@ export function PluginEditScreen(props: {
         setError(undefined)
         return
       }
-      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
+      else if (key.delete) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) saveOptions()
       else {
         setError(undefined)
-        setInputValue((current) => appendPrintableInput(current, input))
+        setInputValue((current) => insertEditableTextInput(current, input))
       }
       return
     }
 
     const rows = openCodeMenuRows(menuGroups, "")
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       props.onBack()
       return
@@ -109,7 +101,8 @@ export function PluginEditScreen(props: {
       <OpenCodePrompt
         title={t("plugin.title.editId", { id: props.plugin.packageName })}
         label={t("plugin.optionsJson")}
-        value={inputValue}
+        value={inputValue.value}
+        cursor={inputValue.cursor}
         error={error}
         hint={t("plugin.optionsHint")}
         footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]}

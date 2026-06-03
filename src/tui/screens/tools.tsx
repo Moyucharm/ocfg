@@ -40,7 +40,7 @@ export function ToolsScreen(props: {
     props.onToggleExaSearch(enabled)
   }
 
-  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack, mouse: { hasFooter: true, hasDetail: true } })
+  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack })
 
   useEffect(() => {
     let active = true

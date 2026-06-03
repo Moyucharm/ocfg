@@ -30,7 +30,7 @@ export const defaultTuiPreferences: TuiPreferences = {
   theme: "opencode",
   keybinds: defaultTuiKeybinds,
   diffStyle: "unified",
-  mouse: true,
+  mouse: false,
   language: defaultTuiLanguage,
 }
 

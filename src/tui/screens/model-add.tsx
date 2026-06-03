@@ -7,11 +7,10 @@ import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { configuredModelIDs, selectableDetectedModels, splitExistingModelIDs } from "../model-add.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { inferEndpointKindFromProvider, providerApiKeyRef, providerBaseURL, resolveProviderApiKey } from "../provider-metadata.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodeNotice, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodeNotice, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "choose" | "input" | "detecting" | "select" | "review" | "loading"
 
@@ -43,7 +42,7 @@ export function ModelAddScreen(props: {
   const [step, setStep] = useState<Step>(template.supportsModelProbe && baseURL ? "choose" : "input")
   const [selected, setSelected] = useState(0)
   const [query, setQuery] = useState("")
-  const [modelText, setModelText] = useState("")
+  const [modelInput, setModelInput] = useState(() => editableTextInput())
   const [detectedModels, setDetectedModels] = useState<DetectedModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
   const [generated, setGenerated] = useState<GeneratedProviderDraft>()
@@ -52,7 +51,7 @@ export function ModelAddScreen(props: {
   const [metadataWarnings, setMetadataWarnings] = useState<string[]>([])
   const keybinds = useTuiKeybinds()
 
-  async function resolveModels(modelIDs = parseModelIDs(modelText)) {
+  async function resolveModels(modelIDs = parseModelIDs(modelInput.value)) {
     const { newModelIDs, alreadyAdded } = splitExistingModelIDs(modelIDs, existingModelIDs)
     if (newModelIDs.length === 0) {
       setError(alreadyAdded.length > 0 ? t("model.alreadyConfigured", { models: alreadyAdded.join(", ") }) : t("model.atLeastOne"))
@@ -207,26 +206,19 @@ export function ModelAddScreen(props: {
     if (matchesKeybind("cancel", input, key, keybinds)) return props.onBack()
     if (step === "detecting" || step === "loading") return
     if (step === "input") {
-      if (key.backspace || key.delete) setModelText((current) => current.slice(0, -1))
+      if (matchesKeybind("left", input, key, keybinds)) setModelInput((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setModelInput((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setModelInput(deleteEditableTextInputBackward)
+      else if (key.delete) setModelInput(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) void resolveModels()
       else {
-        setModelText((current) => appendPrintableInput(current, input))
+        setModelInput((current) => insertEditableTextInput(current, input))
       }
       return
     }
 
     const rows = rowsForStep()
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: step === "select", selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
     if (matchesKeybind("back", input, key, keybinds)) {
       if (step === "review") setStep(detectedModels.length > 0 ? "select" : "input")
       else props.onBack()
@@ -287,7 +279,7 @@ export function ModelAddScreen(props: {
     }
   })
 
-  if (step === "input") return <OpenCodePrompt title={t("model.title.add")} label={t("model.ids")} value={modelText} error={error} hint={t("model.inputHint")} footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]} />
+  if (step === "input") return <OpenCodePrompt title={t("model.title.add")} label={t("model.ids")} value={modelInput.value} cursor={modelInput.cursor} error={error} hint={t("model.inputHint")} footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]} />
   if (step === "detecting") return <Text>{t("model.detecting", { baseURL: baseURL ?? "" })}</Text>
   if (step === "loading") return <Text>{t("model.resolving")}</Text>
 
@@ -298,7 +290,7 @@ export function ModelAddScreen(props: {
       rows={rowsForStep()}
       selectedIndex={selected}
       showSearch={step === "select"}
-      footer={step === "select" ? [`${t("common.toggle")}\tspace`, `${t("common.all")}\tctrl+a`, `${t("common.manual")}\tctrl+m`, `${t("common.retry")}\tctrl+r`, `${t("common.continue")}\tenter`] : step === "review" ? [`${t("common.diff")}\td`, `${t("common.back")}\tb`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]}
+      footer={step === "select" ? [`${t("common.toggle")}\tspace`, `${t("common.all")}\tctrl+a`, `${t("common.manual")}\tctrl+m`, `${t("common.retry")}\tctrl+r`, `${t("common.continue")}\tenter`] : step === "review" ? [`${t("model.viewDiff")}\td`, `${t("common.back")}\tb`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]}
       emptyText={error}
     />
   )

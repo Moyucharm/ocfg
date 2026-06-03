@@ -3,7 +3,6 @@ import { Box, Text, useStdout } from "ink"
 import { useTuiInput } from "../input.js"
 import { useTuiText } from "../i18n.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent, type TuiMouseEvent } from "../mouse.js"
 import type { TuiDiffStyle } from "../preferences.js"
 import { useTuiTheme } from "../theme.js"
 import type { DiffReviewState } from "../types.js"
@@ -16,31 +15,6 @@ const actions = [
 
 function diffLineCount(diff: string) {
   return diff ? diff.split(/\r?\n/).length : 1
-}
-
-function actionIndexFromMouse(event: TuiMouseEvent, review: DiffReviewState, writing: boolean, renderedDiffLineCount: number) {
-  if (event.kind !== "press" || event.button !== "left") return undefined
-  let rowsBeforeActions = 0
-  rowsBeforeActions += 1 // title
-  rowsBeforeActions += 1 // spacer
-  rowsBeforeActions += 1 // Target section
-  rowsBeforeActions += 1 // target path
-  if (review.secretFile) rowsBeforeActions += 1
-  if (review.promptFile) rowsBeforeActions += 1
-  rowsBeforeActions += 1 // spacer
-  if (writing) rowsBeforeActions += 1
-  if (review.diagnostics && review.diagnostics.length > 0) {
-    rowsBeforeActions += 1 // Diagnostics section
-    rowsBeforeActions += review.diagnostics.length
-    rowsBeforeActions += 1 // spacer
-  }
-  rowsBeforeActions += 1 // Changes section
-  rowsBeforeActions += renderedDiffLineCount
-  rowsBeforeActions += 1 // spacer
-  rowsBeforeActions += 1 // Actions section
-
-  const actionIndex = event.y - (rowsBeforeActions + 1)
-  return actionIndex >= 0 && actionIndex < actions.length ? actionIndex : undefined
 }
 
 function Header(props: { title: string }) {
@@ -109,7 +83,6 @@ export function DiffReviewScreen(props: {
   const maxDiffLines = Math.max(1, (stdout.rows ?? 24) - staticRows)
   const maxDiffOffset = Math.max(0, diffLines - maxDiffLines)
   const renderedDiffOffset = Math.min(diffOffset, maxDiffOffset)
-  const renderedDiffLineCount = Math.min(diffLines, maxDiffLines)
   const actionItems: OpenCodeMenuItem[] = actions.map((action) => ({
     id: action.id,
     label: action.id === "confirm" ? t("diff.confirm") : t("diff.cancel"),
@@ -142,24 +115,12 @@ export function DiffReviewScreen(props: {
   }
 
   useTuiInput((input, key) => {
-    const mouseEvent = parseTuiMouseEvent(input)
     if (props.review.completed || props.review.error) {
-      if (mouseEvent?.kind === "press" && mouseEvent.button === "left") props.onClose()
       if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds) || matchesKeybind("confirm", input, key, keybinds)) props.onClose()
       return
     }
 
     if (writing) return
-    if (mouseEvent) {
-      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-up") scrollDiff(-3)
-      if (mouseEvent.kind === "wheel" && mouseEvent.button === "wheel-down") scrollDiff(3)
-      const clicked = actionIndexFromMouse(mouseEvent, props.review, writing, renderedDiffLineCount)
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        performAction(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onCancel()
     if (matchesKeybind("up", input, key, keybinds)) {
       if (maxDiffOffset > 0) scrollDiff(-1)

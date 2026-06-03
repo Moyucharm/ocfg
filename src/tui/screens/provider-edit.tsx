@@ -4,11 +4,10 @@ import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { ProviderFlowDraft } from "../types.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "endpoint" | "provider-id" | "name" | "base-url" | "api-key" | "cache"
 
@@ -26,7 +25,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const [name, setName] = useState("")
   const [baseURL, setBaseURL] = useState("")
   const [apiKeyValue, setApiKeyValue] = useState("")
-  const [inputValue, setInputValue] = useState("")
+  const [inputValue, setInputValue] = useState(() => editableTextInput())
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
 
@@ -55,33 +54,33 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
 
   function openPrompt(nextStep: Step) {
     setStep(nextStep)
-    if (nextStep === "provider-id") setInputValue(providerID)
-    if (nextStep === "name") setInputValue(name)
-    if (nextStep === "base-url") setInputValue(baseURL)
-    if (nextStep === "api-key") setInputValue(apiKeyValue)
+    if (nextStep === "provider-id") setInputValue(editableTextInput(providerID))
+    if (nextStep === "name") setInputValue(editableTextInput(name))
+    if (nextStep === "base-url") setInputValue(editableTextInput(baseURL))
+    if (nextStep === "api-key") setInputValue(editableTextInput(apiKeyValue))
   }
 
   function savePrompt() {
     setError(undefined)
     if (step === "provider-id") {
-      if (!inputValue.trim()) return setError(t("provider.error.providerIdRequired"))
-      setProviderID(inputValue.trim())
+      if (!inputValue.value.trim()) return setError(t("provider.error.providerIdRequired"))
+      setProviderID(inputValue.value.trim())
       openPrompt("name")
       return
     }
     if (step === "name") {
-      setName(inputValue)
+      setName(inputValue.value)
       openPrompt("base-url")
       return
     }
     if (step === "base-url") {
-      setBaseURL(inputValue)
+      setBaseURL(inputValue.value)
       openPrompt("api-key")
       return
     }
     if (step === "api-key") {
-      if (!inputValue.trim()) return setError(t("provider.error.apiKeyRequired"))
-      setApiKeyValue(inputValue)
+      if (!inputValue.value.trim()) return setError(t("provider.error.apiKeyRequired"))
+      setApiKeyValue(inputValue.value)
       setStep("cache")
       setSelected(0)
       setQuery("")
@@ -106,24 +105,17 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
         props.onBack()
         return
       }
-      if (key.backspace || key.delete) setInputValue((current) => current.slice(0, -1))
+      if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
+      else if (key.delete) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
-      else setInputValue((current) => appendPrintableInput(current, input))
+      else setInputValue((current) => insertEditableTextInput(current, input))
       return
     }
 
     const rows = openCodeMenuRows(selectGroups, query)
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { showSearch: true, selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelect(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onBack()
     if (key.backspace || key.delete) {
       setQuery((current) => current.slice(0, -1))
@@ -145,7 +137,8 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       <OpenCodePrompt
         title={t("provider.title.connect")}
         label={step === "provider-id" ? t("provider.providerId") : step === "name" ? t("provider.displayName") : step === "base-url" ? t("provider.baseURL") : t("provider.apiKey")}
-        value={inputValue}
+        value={inputValue.value}
+        cursor={inputValue.cursor}
         masked={step === "api-key"}
         error={error}
         hint={step === "base-url" ? endpointTemplate.baseURLHint : step === "api-key" && providerID.trim() ? t("provider.hint.storedAt", { path: defaultSecretFilePath(providerID.trim()) }) : undefined}

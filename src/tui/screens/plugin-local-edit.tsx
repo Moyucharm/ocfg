@@ -30,7 +30,7 @@ export function PluginLocalEditScreen(props: {
     if (item?.kind === "item" && item.item.id === "toggle") props.onToggle(props.plugin)
   }
 
-  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: runSelected, onBack: props.onBack, wheel: true, mouse: { hasFooter: true, hasDetail: true } })
+  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: runSelected, onBack: props.onBack })
 
   return (
     <OpenCodeMenu

@@ -6,9 +6,8 @@ import { collectDefaultModelOptions, type DefaultModelKey, type DefaultModelOpti
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { TuiConfigSelection } from "../types.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "target" | "model"
 
@@ -56,16 +55,6 @@ export function DefaultModelScreen(props: {
   useTuiInput((input, key) => {
     const rows = openCodeMenuRows(groups, "")
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((value) => mouse.button === "wheel-up" ? Math.max(0, value - 1) : Math.min(Math.max(0, count - 1), value + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       if (step === "model") {
         setStep("target")

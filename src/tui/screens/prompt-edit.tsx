@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from "react"
 import type { ConfigInstructionItem, PromptFile, PromptTemplate, RuleFile, RuleOverwriteRisk, RuleProfile } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, printableInput, removeLastChar, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, OpenCodeTextArea, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, OpenCodeTextArea, type OpenCodeMenuGroup } from "../ui.js"
 
 export type PromptEditState =
   | {
@@ -75,7 +74,7 @@ export function PromptEditScreen(props: {
   const [selected, setSelected] = useState(0)
   const [content, setContent] = useState(props.state.content)
   const [contentCursor, setContentCursor] = useState<TextCursor>(() => cursorAtEnd(props.state.content))
-  const [agentID, setAgentID] = useState("")
+  const [agentID, setAgentID] = useState(() => editableTextInput())
   const [error, setError] = useState<string>()
   const [pendingAction, setPendingAction] = useState<PendingAction>()
   const [confirmSelected, setConfirmSelected] = useState(0)
@@ -160,7 +159,7 @@ export function PromptEditScreen(props: {
       return
     }
     if (action === "apply-custom") {
-      setAgentID("")
+      setAgentID(editableTextInput())
       setMode("agent")
       return
     }
@@ -285,11 +284,14 @@ export function PromptEditScreen(props: {
         setError(undefined)
         return
       }
-      if (key.backspace || key.delete) setAgentID(removeLastChar)
-      else if (matchesKeybind("confirm", input, key, keybinds)) apply(agentID)
+      if (matchesKeybind("left", input, key, keybinds)) setAgentID((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setAgentID((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setAgentID(deleteEditableTextInputBackward)
+      else if (key.delete) setAgentID(deleteEditableTextInputForward)
+      else if (matchesKeybind("confirm", input, key, keybinds)) apply(agentID.value)
       else {
         setError(undefined)
-        setAgentID((current) => appendPrintableInput(current, input))
+        setAgentID((current) => insertEditableTextInput(current, input))
       }
       return
     }
@@ -297,16 +299,6 @@ export function PromptEditScreen(props: {
     if (mode === "confirm") {
       const rows = openCodeMenuRows(confirmGroups, "")
       const count = rows.filter((row) => row.kind === "item").length
-      const mouse = parseTuiMouseEvent(input)
-      if (mouse) {
-        if (mouse.kind === "wheel") setConfirmSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-        const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: confirmSelected, hasFooter: true })
-        if (clicked !== undefined) {
-          setConfirmSelected(clicked)
-          runSelectedConfirm(clicked)
-        }
-        return
-      }
       if (matchesKeybind("cancel", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
         confirmPendingAction(false)
         return
@@ -319,16 +311,6 @@ export function PromptEditScreen(props: {
 
     const rows = openCodeMenuRows(menuGroups, "")
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       props.onBack()
       return
@@ -357,7 +339,8 @@ export function PromptEditScreen(props: {
       <OpenCodePrompt
         title={t("prompt.title.editId", { id: promptTitle })}
         label={t("prompt.agentId")}
-        value={agentID}
+        value={agentID.value}
+        cursor={agentID.cursor}
         error={error}
         hint={t("prompt.agentHint")}
         footer={[`${t("common.save")}\tenter`, `${t("common.cancel")}\tesc`]}

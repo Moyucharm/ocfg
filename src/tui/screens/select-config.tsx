@@ -30,7 +30,7 @@ export function SelectConfigScreen(props: {
     props.onSelect({ scope, target: locateConfig({ scope }) })
   }
 
-  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack, mouse: { hasFooter: true } })
+  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack })
 
   return <OpenCodeMenu title={t("config.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

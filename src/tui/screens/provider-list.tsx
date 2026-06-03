@@ -6,14 +6,12 @@ import { readConfig } from "../../core/config-reader.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import type { ProviderListMode, TuiConfigSelection } from "../types.js"
-import { menuItemIndexFromMouse, OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
 
 export function ProviderListScreen(props: {
   selection: TuiConfigSelection
   mode?: ProviderListMode
-  onAdd?: () => void
   onSelectProvider?: (providerID: string) => void
   onBack: () => void
 }) {
@@ -28,7 +26,6 @@ export function ProviderListScreen(props: {
   const groups: OpenCodeMenuGroup[] = [{
     title: t("provider.providers"),
     items: [
-      ...(mode === "add" ? [{ id: "__add", label: t("provider.title.connect") }] : []),
       ...providers.map((provider) => ({
         id: provider.id,
         label: provider.id,
@@ -42,23 +39,12 @@ export function ProviderListScreen(props: {
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
-    if (item.item.id === "__add") props.onAdd?.()
-    else props.onSelectProvider?.(item.item.id)
+    props.onSelectProvider?.(item.item.id)
   }
 
   useTuiInput((input, key) => {
     const rows = openCodeMenuRows(groups, "")
     const count = rows.filter((row) => row.kind === "item").length
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse) {
-      if (mouse.kind === "wheel") setSelected((current) => mouse.button === "wheel-up" ? Math.max(0, current - 1) : Math.min(Math.max(0, count - 1), current + 1))
-      const clicked = menuItemIndexFromMouse(mouse, rows, { selectedIndex: selected, hasFooter: true })
-      if (clicked !== undefined) {
-        setSelected(clicked)
-        runSelected(clicked)
-      }
-      return
-    }
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       props.onBack()
       return
@@ -84,7 +70,7 @@ export function ProviderListScreen(props: {
         }))
         if (!active) return
         setProviders(nextProviders)
-        setSelected((current) => Math.min(current, Math.max(0, nextProviders.length + (mode === "add" ? 1 : 0) - 1)))
+        setSelected((current) => Math.min(current, Math.max(0, nextProviders.length - 1)))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {
@@ -100,6 +86,6 @@ export function ProviderListScreen(props: {
   if (loading) return <Text>{t("provider.loading")}</Text>
   if (error) return <Text color="red">{t("provider.failed", { message: error })}</Text>
 
-  const title = mode === "edit" ? t("provider.title.edit") : mode === "delete" ? t("provider.title.delete") : t("provider.title.connect")
+  const title = mode === "edit" ? t("provider.title.edit") : t("provider.title.delete")
   return <OpenCodeMenu title={title} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

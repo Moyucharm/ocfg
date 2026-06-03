@@ -4,6 +4,10 @@ export type TuiLanguage = "en" | "zh-CN"
 
 export const defaultTuiLanguage: TuiLanguage = "en"
 
+export function nextTuiLanguage(language: TuiLanguage): TuiLanguage {
+  return language === "en" ? "zh-CN" : "en"
+}
+
 export const englishText = {
   "common.add": "Add",
   "common.all": "All",
@@ -26,6 +30,7 @@ export const englishText = {
   "common.save": "Save",
   "common.scroll": "Scroll",
   "common.select": "Select",
+  "common.saving": "Saving...",
   "common.toggle": "Toggle",
   "common.true": "true",
   "common.yes": "yes",
@@ -44,7 +49,6 @@ export const englishText = {
   "home.setDefaultModel": "Set default model",
   "home.tools": "Tools",
   "home.switchConfig": "Switch config target",
-  "home.switchLanguage": "Language",
   "home.deleteProvider": "Delete provider",
 
   "tools.title": "Tools",
@@ -88,7 +92,7 @@ export const englishText = {
   "provider.apiKey": "API key",
   "provider.cacheKey": "setCacheKey",
   "provider.editModels": "Edit models",
-  "provider.reviewDiff": "Review diff",
+  "provider.reviewDiff": "View Diff and Save",
   "provider.unknown": "(unknown)",
   "provider.error.providerIdRequired": "Provider ID is required.",
   "provider.error.apiKeyRequired": "API key is required.",
@@ -209,7 +213,7 @@ export const englishText = {
   "model.recent": "Recent",
   "model.resolved": "Resolved",
   "model.actions": "Actions",
-  "model.viewDiff": "View diff",
+  "model.viewDiff": "View Diff and Save",
   "model.alreadyAdded": "Already added",
   "model.alreadyConfigured": "Already configured: {models}",
   "model.skippedAlready": "Skipped already configured models: {models}",
@@ -256,7 +260,7 @@ export const englishText = {
   "delete.referencedBy": "Referenced by: {refs}",
   "delete.error.confirmToken": "Confirmation token must be exactly \"{token}\"",
 
-  "diff.confirm": "Confirm",
+  "diff.confirm": "Save",
   "diff.cancel": "Cancel",
   "diff.configWritten": "Config written",
   "diff.result": "Result",
@@ -304,6 +308,7 @@ export const chineseText = {
   "common.save": "保存",
   "common.scroll": "滚动",
   "common.select": "选择",
+  "common.saving": "正在保存...",
   "common.toggle": "切换",
   "common.true": "是",
   "common.yes": "是",
@@ -322,7 +327,6 @@ export const chineseText = {
   "home.setDefaultModel": "设置默认模型",
   "home.tools": "小工具",
   "home.switchConfig": "切换配置目标",
-  "home.switchLanguage": "切换语言",
   "home.deleteProvider": "删除渠道",
 
   "tools.title": "小工具",
@@ -366,7 +370,7 @@ export const chineseText = {
   "provider.apiKey": "API 密钥",
   "provider.cacheKey": "缓存键",
   "provider.editModels": "编辑模型",
-  "provider.reviewDiff": "查看差异",
+  "provider.reviewDiff": "查看差异并保存",
   "provider.unknown": "(未知)",
   "provider.error.providerIdRequired": "渠道 ID 必填。",
   "provider.error.apiKeyRequired": "API 密钥必填。",
@@ -487,7 +491,7 @@ export const chineseText = {
   "model.recent": "最近",
   "model.resolved": "已解析",
   "model.actions": "操作",
-  "model.viewDiff": "查看差异",
+  "model.viewDiff": "查看差异并保存",
   "model.alreadyAdded": "已添加",
   "model.alreadyConfigured": "已配置：{models}",
   "model.skippedAlready": "已跳过配置过的模型：{models}",
@@ -534,7 +538,7 @@ export const chineseText = {
   "delete.referencedBy": "被引用：{refs}",
   "delete.error.confirmToken": "确认令牌必须完全等于 \"{token}\"",
 
-  "diff.confirm": "确认",
+  "diff.confirm": "保存",
   "diff.cancel": "取消",
   "diff.configWritten": "配置已写入",
   "diff.result": "结果",

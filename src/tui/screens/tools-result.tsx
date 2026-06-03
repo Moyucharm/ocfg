@@ -3,7 +3,6 @@ import { Box, Text } from "ink"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { parseTuiMouseEvent } from "../mouse.js"
 import { useTuiTheme } from "../theme.js"
 import type { ToolsResultState } from "../types.js"
 import { formatOpenCodeTitle, OpenCodeActionLine } from "../ui.js"
@@ -18,11 +17,6 @@ export function ToolsResultScreen(props: {
   const color = props.result.tone === "error" ? theme.colors.error : props.result.tone === "success" ? theme.colors.success : theme.colors.warning
 
   useTuiInput((input, key) => {
-    const mouse = parseTuiMouseEvent(input)
-    if (mouse?.kind === "press" && mouse.button === "left") {
-      props.onClose()
-      return
-    }
     if (matchesKeybind("confirm", input, key, keybinds) || matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onClose()
   })
 

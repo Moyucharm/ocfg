@@ -31,7 +31,7 @@ export function LanguageScreen(props: {
     props.onSelect(item.item.id as TuiLanguage)
   }
 
-  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack, mouse: { hasFooter: true } })
+  useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: selectIndex, onBack: props.onBack })
 
   return <OpenCodeMenu title={t("language.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

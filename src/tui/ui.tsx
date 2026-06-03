@@ -3,7 +3,6 @@ import { Box, Text, useStdout } from "ink"
 import { useTuiText } from "./i18n.js"
 import type { TuiDiffStyle } from "./preferences.js"
 import { useTuiTheme, type TuiTheme } from "./theme.js"
-import type { TuiMouseEvent } from "./mouse.js"
 import { cursorAtEnd, normalizeCursor, type TextCursor } from "./text-editor.js"
 
 export const openCodeContentWidth = 78
@@ -126,29 +125,6 @@ export function openCodeMenuViewport(rows: OpenCodeMenuRow[], selectedIndex: num
     hiddenAfter: lastRowIndex < rows.length - 1,
     maxHeight: safeMaxHeight,
   }
-}
-
-export function menuItemIndexFromMouse(
-  event: TuiMouseEvent,
-  rows: OpenCodeMenuRow[],
-  options?: { showSearch?: boolean; selectedIndex?: number; maxHeight?: number; terminalRows?: number; hasFooter?: boolean; hasDetail?: boolean },
-) {
-  if (event.kind !== "press" || event.button !== "left") return undefined
-  const maxHeight = options?.maxHeight ?? openCodeMenuContentHeight({
-    showSearch: options?.showSearch,
-    hasFooter: options?.hasFooter,
-    hasDetail: options?.hasDetail,
-    terminalRows: options?.terminalRows,
-  })
-  const viewport = openCodeMenuViewport(rows, options?.selectedIndex ?? 0, maxHeight)
-  let visualRow = options?.showSearch ? openCodeMenuLayout.firstContentRowWithSearch : openCodeMenuLayout.firstContentRow
-  for (const entry of viewport.rows) {
-    const row = entry.row
-    if (entry.hasTopMargin) visualRow += 1
-    if (event.y === visualRow) return row.kind === "item" ? row.itemIndex : undefined
-    visualRow += 1
-  }
-  return undefined
 }
 
 function isCombiningCodePoint(codePoint: number) {
@@ -379,6 +355,7 @@ export function OpenCodeMenu(props: {
   selectedIndex: number
   showSearch?: boolean
   footer?: string[]
+  footerRight?: ReactNode
   emptyText?: string
 }) {
   const theme = useTuiTheme()
@@ -388,10 +365,11 @@ export function OpenCodeMenu(props: {
   const showSearch = props.showSearch === true
   const selectedRow = props.rows.find((row) => row.kind === "item" && row.itemIndex === props.selectedIndex)
   const selectedDetail = selectedRow?.kind === "item" ? selectedRow.item.detail : undefined
+  const hasFooter = Boolean(props.footer?.length || props.footerRight)
   const viewport = openCodeMenuViewport(
     props.rows,
     props.selectedIndex,
-    openCodeMenuContentHeight({ showSearch, hasFooter: Boolean(props.footer?.length), hasDetail: Boolean(selectedDetail), terminalRows: stdout.rows }),
+    openCodeMenuContentHeight({ showSearch, hasFooter, hasDetail: Boolean(selectedDetail), terminalRows: stdout.rows }),
   )
   const labelColumnWidth = menuLabelColumnWidth(props.rows, contentWidth)
   return (
@@ -436,18 +414,21 @@ export function OpenCodeMenu(props: {
           </Box>
         </>
       ) : null}
-      {props.footer && props.footer.length > 0 ? (
+      {hasFooter ? (
         <>
           <Text> </Text>
-          <Box paddingX={5} gap={3}>
-            {props.footer.map((item, index) => {
-              const [label, shortcut] = item.split("\t")
-              return (
-                <Text key={`${item}-${index}`} bold>
-                  {label}{shortcut ? <Text color={theme.colors.shortcut}> {shortcut}</Text> : null}
-                </Text>
-              )
-            })}
+          <Box paddingX={5} justifyContent="space-between">
+            <Box gap={3}>
+              {(props.footer ?? []).map((item, index) => {
+                const [label, shortcut] = item.split("\t")
+                return (
+                  <Text key={`${item}-${index}`} bold>
+                    {label}{shortcut ? <Text color={theme.colors.shortcut}> {shortcut}</Text> : null}
+                  </Text>
+                )
+              })}
+            </Box>
+            {props.footerRight ? <Box>{props.footerRight}</Box> : null}
           </Box>
         </>
       ) : null}
@@ -459,6 +440,7 @@ export function OpenCodePrompt(props: {
   title: string
   label: string
   value: string
+  cursor?: TextCursor
   masked?: boolean
   error?: string
   hint?: string
@@ -467,7 +449,13 @@ export function OpenCodePrompt(props: {
   const theme = useTuiTheme()
   const t = useTuiText()
   const [cursorVisible, setCursorVisible] = useState(true)
-  const displayValue = props.masked ? maskSecret(props.value) : props.value
+  const cursor = normalizeCursor(props.value, props.cursor ?? cursorAtEnd(props.value))
+  const displayValue = props.masked ? "*".repeat(Array.from(props.value).length) : props.value
+  const chars = Array.from(displayValue)
+  const cursorOffset = Math.max(0, Math.min(chars.length, cursor.column))
+  const before = chars.slice(0, cursorOffset).join("")
+  const cursorChar = chars[cursorOffset]
+  const after = chars.slice(cursorOffset + (cursorChar ? 1 : 0)).join("")
 
   useEffect(() => {
     const timer = setInterval(() => setCursorVisible((visible) => !visible), 550)
@@ -486,8 +474,9 @@ export function OpenCodePrompt(props: {
       </Box>
       <Box paddingX={5}>
         <Text>
-          <Text wrap="wrap">{displayValue}</Text>
-          <Text backgroundColor={cursorVisible ? theme.colors.highlight : undefined} color={cursorVisible ? theme.colors.highlightText : theme.colors.primary}> </Text>
+          <Text wrap="wrap">{before}</Text>
+          <Text backgroundColor={cursorVisible ? theme.colors.highlight : undefined} color={cursorVisible ? theme.colors.highlightText : theme.colors.primary}>{cursorChar ?? " "}</Text>
+          <Text wrap="wrap">{after}</Text>
         </Text>
       </Box>
       {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted}>{props.hint}</Text></Box> : null}
@@ -586,6 +575,19 @@ export function OpenCodeNotice(props: { children: ReactNode; tone?: "warning" | 
   return (
     <Box paddingX={5}>
       <Text color={color}>{props.children}</Text>
+    </Box>
+  )
+}
+
+export function OpenCodeBusyDialog(props: { message: string }) {
+  const theme = useTuiTheme()
+  const t = useTuiText()
+  return (
+    <Box paddingX={5}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.colors.highlight} paddingX={2} paddingY={1}>
+        <Text bold color={theme.colors.section}>{t("common.saving")}</Text>
+        <Text color={theme.colors.primary}>{props.message}</Text>
+      </Box>
     </Box>
   )
 }

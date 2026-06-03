@@ -22,12 +22,11 @@ export type TuiRoute =
   | "delete-confirm"
   | "default-model"
   | "model-edit"
-  | "language"
   | "tools"
   | "tools-result"
   | "diff-review"
 
-export type ProviderListMode = "add" | "edit" | "delete"
+export type ProviderListMode = "edit" | "delete"
 
 export type DeleteTargetState =
   | {
@@ -54,7 +53,6 @@ export type TuiAction =
   | "set-default-model"
   | "tools"
   | "switch-config"
-  | "switch-language"
 
 export type TuiConfigSelection = {
   scope: ConfigScope

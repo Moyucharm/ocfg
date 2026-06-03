@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput } from "../src/tui/input.js"
 import { deleteBackward, deleteForward, insertNewline, insertText, moveCursor } from "../src/tui/text-editor.js"
 import { openCodeTextAreaRows, openCodeTextAreaViewport } from "../src/tui/ui.js"
 
@@ -32,5 +33,15 @@ describe("TUI text editor", () => {
     expect(viewport.rows.map((row) => row.text)).toEqual(["ghi", "jkl"])
     expect(viewport.cursorRowIndex).toBe(1)
     expect(viewport.hiddenBefore).toBe(true)
+  })
+
+  test("edits single-line prompt input at the cursor", () => {
+    const initial = editableTextInput("helo")
+    const moved = moveEditableTextInput(initial, "left")
+    const inserted = insertEditableTextInput(moved, "l")
+
+    expect(inserted).toEqual({ value: "hello", cursor: { line: 0, column: 4 } })
+    expect(deleteEditableTextInputBackward(inserted)).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
+    expect(deleteEditableTextInputForward({ value: "hello", cursor: { line: 0, column: 3 } })).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
   })
 })

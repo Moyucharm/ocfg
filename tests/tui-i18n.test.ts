@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { channelTypeOptions } from "../src/core/channel-types.js"
-import { chineseText, englishText, translate, type TuiTextKey } from "../src/tui/i18n.js"
+import { chineseText, englishText, nextTuiLanguage, translate, type TuiTextKey } from "../src/tui/i18n.js"
 
 describe("TUI i18n", () => {
   test("keeps English and Chinese dictionaries in sync", () => {
@@ -26,5 +26,10 @@ describe("TUI i18n", () => {
       "Anthropic compatible",
       "Gemini compatible",
     ])
+  })
+
+  test("toggles between supported TUI languages", () => {
+    expect(nextTuiLanguage("en")).toBe("zh-CN")
+    expect(nextTuiLanguage("zh-CN")).toBe("en")
   })
 })

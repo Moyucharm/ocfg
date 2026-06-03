@@ -1,7 +1,7 @@
 import React, { useState } from "react"
 import { normalizePromptFileName } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { appendPrintableInput, printableInput, removeLastChar, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
 import { OpenCodePrompt, OpenCodeTextArea } from "../ui.js"
@@ -37,7 +37,7 @@ export function PromptAddScreen(props: {
   const t = useTuiText()
   const kind = props.kind ?? "prompt"
   const [step, setStep] = useState<Step>("name")
-  const [name, setName] = useState("")
+  const [name, setName] = useState(() => editableTextInput())
   const [content, setContent] = useState("")
   const [contentCursor, setContentCursor] = useState<TextCursor>(() => cursorAtEnd(""))
   const [error, setError] = useState<string>()
@@ -45,7 +45,7 @@ export function PromptAddScreen(props: {
 
   function continueToContent() {
     try {
-      const fileName = normalizePromptFileName(name)
+      const fileName = normalizePromptFileName(name.value)
       const nextContent = kind === "rule-profile" ? ruleProfileSkeleton(fileName) : skeleton(fileName)
       setContent(nextContent)
       setContentCursor(cursorAtEnd(nextContent))
@@ -58,7 +58,7 @@ export function PromptAddScreen(props: {
 
   function saveContent() {
     try {
-      const fileName = normalizePromptFileName(name)
+      const fileName = normalizePromptFileName(name.value)
       if (!content.trim()) throw new Error(t("prompt.contentRequired"))
       props.onSave(fileName, content)
     } catch (caught) {
@@ -77,11 +77,14 @@ export function PromptAddScreen(props: {
         props.onBack()
         return
       }
-      if (key.backspace || key.delete) setName(removeLastChar)
+      if (matchesKeybind("left", input, key, keybinds)) setName((current) => moveEditableTextInput(current, "left"))
+      else if (matchesKeybind("right", input, key, keybinds)) setName((current) => moveEditableTextInput(current, "right"))
+      else if (key.backspace) setName(deleteEditableTextInputBackward)
+      else if (key.delete) setName(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) continueToContent()
       else {
         setError(undefined)
-        setName((current) => appendPrintableInput(current, input))
+        setName((current) => insertEditableTextInput(current, input))
       }
       return
     }
@@ -127,7 +130,8 @@ export function PromptAddScreen(props: {
     <OpenCodePrompt
       title={t(kind === "rule-profile" ? "prompt.title.addRuleConfig" : "prompt.title.add")}
       label={t(kind === "rule-profile" ? "prompt.ruleConfigName" : "prompt.fileName")}
-      value={name}
+      value={name.value}
+      cursor={name.cursor}
       error={error}
       hint={t(kind === "rule-profile" ? "prompt.ruleConfigNameHint" : "prompt.fileNameHint")}
       footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]}
