@@ -51,6 +51,7 @@ import { PluginLocalEditScreen } from "./screens/plugin-local-edit.js"
 import { PluginListScreen } from "./screens/plugin-list.js"
 import { PromptAddScreen } from "./screens/prompt-add.js"
 import { PromptEditScreen, type PromptEditState } from "./screens/prompt-edit.js"
+import { PromptModeScreen } from "./screens/prompt-mode.js"
 import { PromptListScreen } from "./screens/prompt-list.js"
 import { ModelListScreen } from "./screens/model-list.js"
 import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
@@ -71,7 +72,7 @@ import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeBusyDialog, OpenCodeFrame, OpenCodeNotice } from "./ui.js"
 import { isRecord } from "../core/object-utils.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
-import type { DeleteTargetState, DiffReviewState, ProviderFlowDraft, ProviderListMode, ToolsResultState, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
+import type { DeleteTargetState, DiffReviewState, PromptListMode, ProviderFlowDraft, ToolsResultState, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
 export function App() {
   const { exit } = useApp()
@@ -85,13 +86,13 @@ export function App() {
   const [preferenceWarning, setPreferenceWarning] = useState<string>()
   const [preferencePath, setPreferencePath] = useState<string>()
   const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
-  const [providerListMode, setProviderListMode] = useState<ProviderListMode>("edit")
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
   const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
   const [selectedPlugin, setSelectedPlugin] = useState<PluginListItem>()
   const [selectedLocalPlugin, setSelectedLocalPlugin] = useState<LocalPluginItem>()
   const [pluginAddKind, setPluginAddKind] = useState<"npm" | "local">("npm")
+  const [promptListMode, setPromptListMode] = useState<PromptListMode>("rules")
   const [promptAddKind, setPromptAddKind] = useState<"prompt" | "rule-profile">("prompt")
   const [promptEditState, setPromptEditState] = useState<PromptEditState>()
   const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState>()
@@ -164,17 +165,12 @@ export function App() {
     if (action === "doctor") navigate("doctor")
     if (action === "switch-config") navigate("select-config")
     if (action === "manage-plugins") navigate("plugin-list")
-    if (action === "manage-prompts") navigate("prompt-list")
+    if (action === "manage-prompts") navigate("prompt-mode")
     if (action === "tools") navigate("tools")
     if (action === "add-provider") {
       navigate("provider-edit")
     }
     if (action === "edit-provider") {
-      setProviderListMode("edit")
-      navigate("provider-list")
-    }
-    if (action === "delete-provider") {
-      setProviderListMode("delete")
       navigate("provider-list")
     }
     if (action === "set-default-model") navigate("default-model")
@@ -948,8 +944,7 @@ export function App() {
             {route === "provider-list" ? (
               <ProviderListScreen
                 selection={config}
-                mode={providerListMode}
-                onSelectProvider={(providerID) => void (providerListMode === "delete" ? beginProviderDelete(providerID) : openExistingProviderEdit(providerID))}
+                onSelectProvider={(providerID) => void openExistingProviderEdit(providerID)}
                 onBack={() => goBack()}
               />
             ) : null}
@@ -998,9 +993,19 @@ export function App() {
                 onBack={() => goBack()}
               />
             ) : null}
+            {route === "prompt-mode" ? (
+              <PromptModeScreen
+                onSelect={(mode) => {
+                  setPromptListMode(mode)
+                  navigate("prompt-list")
+                }}
+                onBack={() => goBack()}
+              />
+            ) : null}
             {route === "prompt-list" ? (
               <PromptListScreen
                 selection={config}
+                mode={promptListMode}
                 onAddPrompt={() => {
                   setPromptAddKind("prompt")
                   navigate("prompt-add")
@@ -1014,7 +1019,7 @@ export function App() {
                 onSelectInstruction={(instruction) => void openInstructionFile(instruction)}
                 onSelectPrompt={(prompt) => void openPromptFile(prompt)}
                 onSelectTemplate={openPromptTemplate}
-                onBack={() => goBack()}
+                onBack={() => goBack("prompt-mode")}
               />
             ) : null}
             {route === "prompt-add" ? (
@@ -1027,6 +1032,7 @@ export function App() {
             {route === "prompt-edit" && promptEditState ? (
               <PromptEditScreen
                 state={promptEditState}
+                mode={promptListMode}
                 onSaveContent={(fileName, content) => void savePromptContent(fileName, content)}
                 onSaveRule={(content) => void saveRuleContent(content)}
                 onSaveRuleProfile={(profile, content) => void updateRuleProfileContent(profile, content)}
@@ -1061,6 +1067,7 @@ export function App() {
                 provider={existingProviderEdit.provider}
                 onBack={() => goBack()}
                 onEditModels={() => navigate("model-list")}
+                onDelete={() => void beginProviderDelete(existingProviderEdit.id)}
                 onComplete={(draft) => void reviewExistingProviderEdit(existingProviderEdit.id, draft)}
               />
             ) : null}

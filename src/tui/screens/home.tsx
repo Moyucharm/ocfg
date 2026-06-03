@@ -56,7 +56,6 @@ export function HomeScreen(props: {
         { id: "set-default-model", label: t("home.setDefaultModel") },
         { id: "tools", label: t("home.tools") },
         { id: "switch-config", label: t("home.switchConfig") },
-        { id: "delete-provider", label: t("home.deleteProvider"), danger: true },
       ],
     },
   ]

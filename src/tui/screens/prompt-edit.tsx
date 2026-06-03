@@ -4,6 +4,7 @@ import { useTuiText } from "../i18n.js"
 import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
+import type { PromptListMode } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, OpenCodeTextArea, type OpenCodeMenuGroup } from "../ui.js"
 
 export type PromptEditState =
@@ -54,6 +55,7 @@ function title(state: PromptEditState) {
 
 export function PromptEditScreen(props: {
   state: PromptEditState
+  mode: PromptListMode
   onSaveContent: (fileName: string, content: string) => void
   onSaveRule: (content: string) => void
   onSaveRuleProfile: (profile: RuleProfile, content: string) => void
@@ -90,8 +92,10 @@ export function PromptEditScreen(props: {
   const menuGroups: OpenCodeMenuGroup[] = [{
     title: t("prompt.prompt"),
     items: isPromptLike ? [
-      { id: "apply-rules", label: t("prompt.applyRules") },
-      { id: "apply-global", label: t("prompt.applyGlobal"), meta: props.state.kind === "file" && props.state.prompt.instructionRefs.length > 0 ? t("common.current") : undefined },
+      ...(props.mode === "rules" ? [
+        { id: "apply-rules", label: t("prompt.applyRules") },
+        { id: "apply-global", label: t("prompt.applyGlobal"), meta: props.state.kind === "file" && props.state.prompt.instructionRefs.length > 0 ? t("common.current") : undefined },
+      ] : []),
       { id: "apply-build", label: t("prompt.applyBuild"), meta: props.state.kind === "file" && props.state.prompt.activeAgents.includes("build") ? t("common.current") : undefined },
       { id: "apply-plan", label: t("prompt.applyPlan"), meta: props.state.kind === "file" && props.state.prompt.activeAgents.includes("plan") ? t("common.current") : undefined },
       { id: "apply-custom", label: t("prompt.applyCustom") },

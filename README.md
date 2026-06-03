@@ -296,10 +296,9 @@ The TUI is opened with `ocfg tui`.
 
 - `Doctor` shows actionable config diagnostics.
 - `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
-- `Edit Provider` selects an existing provider, edits provider fields, and can enter model management.
+- `Edit Provider` selects an existing provider, edits provider fields, can enter model management, and can delete the selected provider with confirmation.
 - `Manage Plugins` lists npm and local plugins, installs npm packages into config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
-- `Manage Prompts` lists and edits `AGENTS.md`, reusable `AGENTS.md` configs, configured `instructions`, prompt files, and bundled defaults. It can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules; create, edit, replace, and delete the active `AGENTS.md`; add custom prompt files; edit multi-line content with arrow-key cursor movement and wrapping; use a prompt globally; or apply it to `build`, `plan`, or a custom agent.
-- `Delete Provider` selects an existing provider and requires extra confirmation for referenced providers.
+- `Manage Prompts` first separates `Shared rules (AGENTS.md)` from `Agent prompts (agent.prompt)`. Shared rules lists and edits the active `AGENTS.md`, reusable `AGENTS.md` configs, and configured `instructions`; it can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules. Agent prompts lists prompt files and bundled templates, edits multi-line prompt content with arrow-key cursor movement and wrapping, and applies prompts only to `build`, `plan`, or a custom agent.
 - `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
 - `Tools` includes an OpenCode Exa search toggle. Enabling writes `permission.websearch = "allow"` and `permission.webfetch = "allow"` to the currently selected global or project config, then sets the current user's `OPENCODE_ENABLE_EXA=1`. Disabling only sets `OPENCODE_ENABLE_EXA=0` and leaves config untouched.
 - `Switch Config Target` changes between global and project config targets before writing.

@@ -11,7 +11,7 @@ import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
 import { maskSecret, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "name" | "base-url" | "api-key" | "channel-type" | "cache"
-type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review"
+type Field = "channel-type" | "name" | "base-url" | "api-key" | "cache" | "edit-models" | "review" | "delete"
 
 function optionValue(provider: Record<string, unknown>, key: string) {
   const options = isRecord(provider.options) ? provider.options : {}
@@ -29,6 +29,7 @@ export function ProviderEditExistingScreen(props: {
   provider: Record<string, unknown>
   onComplete: (draft: ExistingProviderEditDraft) => void
   onEditModels: () => void
+  onDelete: () => void
   onBack: () => void
 }) {
   const t = useTuiText()
@@ -61,6 +62,7 @@ export function ProviderEditExistingScreen(props: {
       { id: "cache", label: t("provider.cacheKey"), meta: t((draft.setCacheKey ?? cacheValue(props.provider)) ? "common.true" : "common.false") },
       { id: "edit-models", label: t("provider.editModels") },
       { id: "review", label: t("provider.reviewDiff") },
+      { id: "delete", label: t("provider.title.delete"), danger: true },
     ],
   }]
 
@@ -76,6 +78,7 @@ export function ProviderEditExistingScreen(props: {
       return
     }
     if (field === "edit-models") return props.onEditModels()
+    if (field === "delete") return props.onDelete()
     if (field === "channel-type") {
       setChannelTypeIndex(Math.max(0, channelTypeOptions.findIndex((option) => option.kind === (draft.endpointKind ?? inferredKind.kind ?? channelTypeOptions[0]!.kind))))
       setMode("channel-type")

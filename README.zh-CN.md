@@ -294,10 +294,9 @@ ocfg tui
 
 - `Doctor` 显示可执行的配置诊断信息。
 - `Add Provider` 通过端点类型、提供商元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 diff 审查来创建提供商。
-- `Edit Provider` 选择现有提供商，编辑提供商字段，并可进入模型管理。
+- `Edit Provider` 选择现有提供商，编辑提供商字段，可进入模型管理，也可在二次确认后删除所选提供商。
 - `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
-- `Manage Prompts` 列出并编辑 `AGENTS.md`、可复用 `AGENTS.md` 配置、已配置的 `instructions`、提示词文件和内置默认模板；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则，创建、编辑、替换和删除当前 `AGENTS.md`，添加自定义提示词文件，用支持方向键移动和自动换行的多行编辑器编辑内容，作为全局指令使用，或应用到 `build`、`plan` 及自定义 agent。
-- `Delete Provider` 选择现有提供商，并对被引用的提供商要求额外确认。
+- `Manage Prompts` 先分为 `通用规则（AGENTS.md）` 和 `智能体提示词（agent.prompt）`。通用规则列出并编辑当前 `AGENTS.md`、可复用 `AGENTS.md` 配置和已配置的 `instructions`；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则。智能体提示词列出提示词文件和内置模板，用支持方向键移动和自动换行的多行编辑器编辑内容，并且只应用到 `build`、`plan` 或自定义 Agent。
 - `Set Default Model` 使用现有 provider/model 引用设置或清除顶层 `model` 和 `small_model`。
 - `Tools` 包含 OpenCode Exa 搜索开关。开启会把 `permission.websearch = "allow"` 和 `permission.webfetch = "allow"` 写入当前选择的全局或项目配置，然后设置当前用户的 `OPENCODE_ENABLE_EXA=1`。关闭只设置 `OPENCODE_ENABLE_EXA=0`，不会改动配置。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。

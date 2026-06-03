@@ -13,6 +13,7 @@ export type TuiRoute =
   | "plugin-add"
   | "plugin-edit"
   | "plugin-local-edit"
+  | "prompt-mode"
   | "prompt-list"
   | "prompt-add"
   | "prompt-edit"
@@ -25,8 +26,6 @@ export type TuiRoute =
   | "tools"
   | "tools-result"
   | "diff-review"
-
-export type ProviderListMode = "edit" | "delete"
 
 export type DeleteTargetState =
   | {
@@ -47,7 +46,6 @@ export type TuiAction =
   | "doctor"
   | "add-provider"
   | "edit-provider"
-  | "delete-provider"
   | "manage-plugins"
   | "manage-prompts"
   | "set-default-model"
@@ -58,6 +56,8 @@ export type TuiConfigSelection = {
   scope: ConfigScope
   target?: ConfigTarget
 }
+
+export type PromptListMode = "rules" | "agent-prompt"
 
 export type DiffReviewState = {
   targetPath: string

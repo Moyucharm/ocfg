@@ -6,12 +6,11 @@ import { readConfig } from "../../core/config-reader.js"
 import { useTuiText } from "../i18n.js"
 import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import type { ProviderListMode, TuiConfigSelection } from "../types.js"
+import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function ProviderListScreen(props: {
   selection: TuiConfigSelection
-  mode?: ProviderListMode
   onSelectProvider?: (providerID: string) => void
   onBack: () => void
 }) {
@@ -21,7 +20,6 @@ export function ProviderListScreen(props: {
   const [query, setQuery] = useState(() => editableTextInput())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
-  const mode = props.mode ?? "edit"
   const keybinds = useTuiKeybinds()
 
   const groups: OpenCodeMenuGroup[] = [{
@@ -32,7 +30,6 @@ export function ProviderListScreen(props: {
         label: provider.id,
         description: provider.name,
         meta: t("provider.count", { count: provider.modelCount }),
-        danger: mode === "delete",
       })),
     ],
   }]
@@ -113,13 +110,12 @@ export function ProviderListScreen(props: {
     return () => {
       active = false
     }
-  }, [mode, props.selection])
+  }, [props.selection])
 
   const showLoading = useDelayedLoading(loading)
 
   if (loading) return showLoading ? <Text>{t("provider.loading")}</Text> : null
   if (error) return <Text color="red">{t("provider.failed", { message: error })}</Text>
 
-  const title = mode === "edit" ? t("provider.title.edit") : t("provider.title.delete")
-  return <OpenCodeMenu title={title} query={query.value} queryCursor={query.cursor} rows={openCodeMenuRows(groups, query.value)} selectedIndex={selected} showSearch footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
+  return <OpenCodeMenu title={t("provider.title.edit")} query={query.value} queryCursor={query.cursor} rows={openCodeMenuRows(groups, query.value)} selectedIndex={selected} showSearch footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

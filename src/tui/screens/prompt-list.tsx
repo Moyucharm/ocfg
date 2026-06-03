@@ -17,11 +17,12 @@ import {
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import type { TuiConfigSelection } from "../types.js"
+import type { PromptListMode, TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function PromptListScreen(props: {
   selection: TuiConfigSelection
+  mode: PromptListMode
   onAddPrompt: () => void
   onAddRuleProfile: () => void
   onSelectRule: (rule: RuleFile) => void
@@ -42,11 +43,10 @@ export function PromptListScreen(props: {
   const keybinds = useTuiKeybinds()
 
   const installedTemplateNames = new Set(prompts.map((prompt) => prompt.fileName))
-  const groups: OpenCodeMenuGroup[] = [
+  const ruleGroups: OpenCodeMenuGroup[] = [
     {
       title: t("prompt.actions"),
       items: [
-        { id: "__add", label: t("prompt.add") },
         { id: "__add_rule_profile", label: t("prompt.addRuleConfig") },
       ],
     },
@@ -83,16 +83,22 @@ export function PromptListScreen(props: {
         detail: instruction.description ?? instruction.path ?? instruction.ref,
       })),
     },
+  ]
+  const agentPromptGroups: OpenCodeMenuGroup[] = [
+    {
+      title: t("prompt.actions"),
+      items: [
+        { id: "__add", label: t("prompt.add") },
+      ],
+    },
     {
       title: t("prompt.files"),
       items: prompts.map((prompt) => ({
         id: `file:${prompt.fileName}`,
         label: prompt.title,
         description: prompt.fileName,
-        meta: prompt.instructionRefs.length > 0
-          ? t("prompt.globalInstruction")
-          : prompt.activeAgents.length > 0 ? t("prompt.activeAgents", { agents: prompt.activeAgents.join(", ") }) : t("prompt.available"),
-        tone: prompt.instructionRefs.length > 0 || prompt.activeAgents.length > 0 ? "success" : undefined,
+        meta: prompt.activeAgents.length > 0 ? t("prompt.activeAgents", { agents: prompt.activeAgents.join(", ") }) : t("prompt.available"),
+        tone: prompt.activeAgents.length > 0 ? "success" : undefined,
         detail: prompt.description ?? prompt.path,
       })),
     },
@@ -107,6 +113,7 @@ export function PromptListScreen(props: {
       })),
     },
   ]
+  const groups = props.mode === "rules" ? ruleGroups : agentPromptGroups
 
   function selectedItem(index = selected) {
     return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -184,7 +191,10 @@ export function PromptListScreen(props: {
         setRuleProfiles(nextRuleProfiles)
         setInstructions(nextInstructions)
         setPrompts(nextPrompts)
-        setSelected((current) => Math.min(current, Math.max(0, 2 + nextRules.length + nextRuleProfiles.length + nextInstructions.length + nextPrompts.length + defaultPromptTemplates.length - 1)))
+        const itemCount = props.mode === "rules"
+          ? 1 + nextRules.length + nextRuleProfiles.length + nextInstructions.length
+          : 1 + nextPrompts.length + defaultPromptTemplates.length
+        setSelected((current) => Math.min(current, Math.max(0, itemCount - 1)))
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : String(caught))
       } finally {
@@ -195,12 +205,12 @@ export function PromptListScreen(props: {
     return () => {
       active = false
     }
-  }, [props.selection])
+  }, [props.mode, props.selection])
 
   const showLoading = useDelayedLoading(loading)
 
   if (loading) return showLoading ? <Text>{t("prompt.loading")}</Text> : null
   if (error) return <Text color="red">{t("prompt.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={t("prompt.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} />
+  return <OpenCodeMenu title={t(props.mode === "rules" ? "prompt.mode.rules" : "prompt.mode.agentPrompts")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} />
 }
