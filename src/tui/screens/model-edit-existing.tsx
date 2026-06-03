@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import { canUseGpt5LongContextPreset, gpt5LongContextState } from "../../core/model-limit-presets.js"
 import { isRecord } from "../../core/object-utils.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { ExistingModelEditDraft } from "../model-edit-existing.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -169,8 +169,8 @@ export function ModelEditExistingScreen(props: {
       }
       if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
-      else if (key.delete) setInputValue(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
       else setInputValue((current) => insertEditableTextInput(current, input))
       return

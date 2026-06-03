@@ -1,7 +1,7 @@
 import React, { useState } from "react"
 import { normalizePluginPackage } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { OpenCodePrompt } from "../ui.js"
 
@@ -32,8 +32,8 @@ export function PluginAddScreen(props: {
     }
     if (matchesKeybind("left", input, key, keybinds)) setValue((current) => moveEditableTextInput(current, "left"))
     else if (matchesKeybind("right", input, key, keybinds)) setValue((current) => moveEditableTextInput(current, "right"))
-    else if (key.backspace) setValue(deleteEditableTextInputBackward)
-    else if (key.delete) setValue(deleteEditableTextInputForward)
+    else if (isBackwardDeleteInput(input, key)) setValue(deleteEditableTextInputBackward)
+    else if (isForwardDeleteInput(input, key)) setValue(deleteEditableTextInputForward)
     else if (matchesKeybind("confirm", input, key, keybinds)) save()
     else {
       setError(undefined)

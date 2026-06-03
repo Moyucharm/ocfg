@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"
 import type { ConfigInstructionItem, PromptFile, PromptTemplate, RuleFile, RuleOverwriteRisk, RuleProfile } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, OpenCodeTextArea, type OpenCodeMenuGroup } from "../ui.js"
@@ -267,8 +267,8 @@ export function PromptEditScreen(props: {
       else if (matchesKeybind("right", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "right"))
       else if (matchesKeybind("up", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "up"))
       else if (matchesKeybind("down", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "down"))
-      else if (key.backspace) applyContentEdit(deleteBackward(content, contentCursor))
-      else if (key.delete) applyContentEdit(deleteForward(content, contentCursor))
+      else if (isBackwardDeleteInput(input, key)) applyContentEdit(deleteBackward(content, contentCursor))
+      else if (isForwardDeleteInput(input, key)) applyContentEdit(deleteForward(content, contentCursor))
       else if (matchesKeybind("confirm", input, key, keybinds)) applyContentEdit(insertNewline(content, contentCursor))
       else {
         setError(undefined)
@@ -286,8 +286,8 @@ export function PromptEditScreen(props: {
       }
       if (matchesKeybind("left", input, key, keybinds)) setAgentID((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setAgentID((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setAgentID(deleteEditableTextInputBackward)
-      else if (key.delete) setAgentID(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setAgentID(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setAgentID(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) apply(agentID.value)
       else {
         setError(undefined)

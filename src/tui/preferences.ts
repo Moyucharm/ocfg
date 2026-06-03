@@ -13,7 +13,6 @@ export type TuiPreferences = {
   theme: TuiThemeName
   keybinds: TuiKeybindMap
   diffStyle: TuiDiffStyle
-  mouse: boolean
   language: TuiLanguage
 }
 
@@ -30,7 +29,6 @@ export const defaultTuiPreferences: TuiPreferences = {
   theme: "opencode",
   keybinds: defaultTuiKeybinds,
   diffStyle: "unified",
-  mouse: false,
   language: defaultTuiLanguage,
 }
 
@@ -46,13 +44,6 @@ function resolveThemeName(value: unknown, diagnostics: string[]): TuiThemeName {
   if (isTuiThemeName(value)) return value
   diagnostics.push(`Unknown TUI theme "${String(value)}"; using "${defaultTuiPreferences.theme}".`)
   return defaultTuiPreferences.theme
-}
-
-function resolveMouse(value: unknown, diagnostics: string[]) {
-  if (value === undefined) return defaultTuiPreferences.mouse
-  if (typeof value === "boolean") return value
-  diagnostics.push(`Unknown TUI mouse value "${String(value)}"; using "${String(defaultTuiPreferences.mouse)}".`)
-  return defaultTuiPreferences.mouse
 }
 
 function resolveLanguage(value: unknown, diagnostics: string[]): TuiLanguage {
@@ -72,13 +63,13 @@ export function resolveTuiPreferences(value: unknown): TuiPreferencesResult {
     if (value !== undefined) diagnostics.push("TUI config must be a JSON object; using defaults.")
     return { preferences: defaultTuiPreferences, diagnostics }
   }
+  if (value.mouse !== undefined) diagnostics.push("TUI mouse preference is no longer supported; ignoring it.")
 
   return {
     preferences: {
       theme: resolveThemeName(value.theme, diagnostics),
       keybinds: resolveTuiKeybinds(value.keybinds),
       diffStyle: resolveDiffStyle(value.diffStyle, diagnostics),
-      mouse: resolveMouse(value.mouse, diagnostics),
       language: resolveLanguage(value.language, diagnostics),
     },
     diagnostics,

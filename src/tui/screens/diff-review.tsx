@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { Box, Text, useStdout } from "ink"
 import { useTuiInput } from "../input.js"
 import { useTuiText } from "../i18n.js"
@@ -72,14 +72,14 @@ export function DiffReviewScreen(props: {
   onClose: () => void
 }) {
   const [selected, setSelected] = useState(0)
-  const [writing, setWriting] = useState(false)
+  const writing = useRef(false)
   const [diffOffset, setDiffOffset] = useState(0)
   const t = useTuiText()
   const { stdout } = useStdout()
   const keybinds = useTuiKeybinds()
   const diffLines = diffLineCount(props.review.diff)
   const diagnosticsRows = props.review.diagnostics && props.review.diagnostics.length > 0 ? props.review.diagnostics.length + 2 : 0
-  const staticRows = 12 + (props.review.secretFile ? 1 : 0) + (props.review.promptFile ? 1 : 0) + (writing ? 1 : 0) + diagnosticsRows
+  const staticRows = 12 + (props.review.secretFile ? 1 : 0) + (props.review.promptFile ? 1 : 0) + diagnosticsRows
   const maxDiffLines = Math.max(1, (stdout.rows ?? 24) - staticRows)
   const maxDiffOffset = Math.max(0, diffLines - maxDiffLines)
   const renderedDiffOffset = Math.min(diffOffset, maxDiffOffset)
@@ -103,8 +103,11 @@ export function DiffReviewScreen(props: {
 
   function performAction(actionIndex: number) {
     if (actions[actionIndex]?.id === "confirm") {
-      setWriting(true)
-      void Promise.resolve().then(() => props.onConfirm()).finally(() => setWriting(false))
+      if (writing.current) return
+      writing.current = true
+      void Promise.resolve().then(() => props.onConfirm()).finally(() => {
+        writing.current = false
+      })
     } else {
       props.onCancel()
     }
@@ -120,7 +123,7 @@ export function DiffReviewScreen(props: {
       return
     }
 
-    if (writing) return
+    if (writing.current) return
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onCancel()
     if (matchesKeybind("up", input, key, keybinds)) {
       if (maxDiffOffset > 0) scrollDiff(-1)
@@ -181,7 +184,6 @@ export function DiffReviewScreen(props: {
       {props.review.secretFile ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFile.path} dim /> : null}
       {props.review.promptFile ? <FieldRow label={t("diff.promptFile")} value={props.review.promptFile.path} dim /> : null}
       <Text> </Text>
-      {writing ? <OpenCodeNotice>{t("diff.writing")}</OpenCodeNotice> : null}
       {props.review.diagnostics && props.review.diagnostics.length > 0 ? (
         <>
           <Section title={t("diff.diagnostics")} />

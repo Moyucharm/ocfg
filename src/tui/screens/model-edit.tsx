@@ -6,7 +6,7 @@ import { applyGeneratedGpt5LongContext, createProviderDraftFromEndpoint, generat
 import type { ModelDraft } from "../../core/types.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { ProviderFlowDraft } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodeNotice, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -36,7 +36,7 @@ export function ModelEditScreen(props: {
   const template = getEndpointTemplate(props.draft.endpointKind)
   const [step, setStep] = useState<Step>(template.supportsModelProbe && props.draft.baseURL ? "choose" : "input")
   const [selected, setSelected] = useState(0)
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(() => editableTextInput())
   const [modelInput, setModelInput] = useState(() => editableTextInput())
   const [detectedModels, setDetectedModels] = useState<DetectedModel[]>([])
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set())
@@ -105,7 +105,7 @@ export function ModelEditScreen(props: {
       setDetectedModels(result.models)
       setSelectedModels(new Set(result.models.map((model) => model.id)))
       setSelected(0)
-      setQuery("")
+      setQuery(editableTextInput())
       setStep("select")
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -114,7 +114,7 @@ export function ModelEditScreen(props: {
   }
 
   function menuQuery() {
-    return step === "select" ? query : ""
+    return step === "select" ? query.value : ""
   }
 
   function rowsForStep() {
@@ -189,8 +189,8 @@ export function ModelEditScreen(props: {
     if (step === "input") {
       if (matchesKeybind("left", input, key, keybinds)) setModelInput((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setModelInput((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setModelInput(deleteEditableTextInputBackward)
-      else if (key.delete) setModelInput(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setModelInput(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setModelInput(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) void resolveModels()
       else {
         setModelInput((current) => insertEditableTextInput(current, input))
@@ -205,16 +205,29 @@ export function ModelEditScreen(props: {
       else props.onBack()
       return
     }
-    if (step === "select" && (key.backspace || key.delete)) {
-      setQuery((current) => current.slice(0, -1))
+    if (step === "select" && matchesKeybind("left", input, key, keybinds)) {
+      setQuery((current) => moveEditableTextInput(current, "left"))
+      return
+    }
+    if (step === "select" && matchesKeybind("right", input, key, keybinds)) {
+      setQuery((current) => moveEditableTextInput(current, "right"))
+      return
+    }
+    if (step === "select" && isBackwardDeleteInput(input, key)) {
+      setQuery(deleteEditableTextInputBackward)
       setSelected(0)
       return
     }
-    if (matchesKeybind("up", input, key, keybinds) || matchesKeybind("left", input, key, keybinds)) {
+    if (step === "select" && isForwardDeleteInput(input, key)) {
+      setQuery(deleteEditableTextInputForward)
+      setSelected(0)
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds) || (step !== "select" && matchesKeybind("left", input, key, keybinds))) {
       setSelected((current) => count <= 0 ? 0 : current === 0 ? Math.max(0, count - 1) : Math.min(current - 1, count - 1))
       return
     }
-    if (matchesKeybind("down", input, key, keybinds) || matchesKeybind("right", input, key, keybinds)) {
+    if (matchesKeybind("down", input, key, keybinds) || (step !== "select" && matchesKeybind("right", input, key, keybinds))) {
       setSelected((current) => count <= 0 ? 0 : current === count - 1 ? 0 : Math.min(current + 1, count - 1))
       return
     }
@@ -237,11 +250,11 @@ export function ModelEditScreen(props: {
     }
     if (key.ctrl && matchesKeybind("manual", input, key, keybinds) && step === "select") {
       setStep("input")
-      setQuery("")
+      setQuery(editableTextInput())
       return
     }
     if (key.ctrl && matchesKeybind("retry", input, key, keybinds) && step === "select") {
-      setQuery("")
+      setQuery(editableTextInput())
       void probeModels()
       return
     }
@@ -255,7 +268,7 @@ export function ModelEditScreen(props: {
     if (step === "select") {
       const printable = printableInput(input)
       if (printable) {
-        setQuery((current) => `${current}${printable}`)
+        setQuery((current) => insertEditableTextInput(current, input))
         setSelected(0)
       }
     }
@@ -269,6 +282,7 @@ export function ModelEditScreen(props: {
     <OpenCodeMenu
       title={step === "choose" ? t("model.models") : step === "select" ? t("model.title.select") : t("model.title.resolved")}
       query={menuQuery()}
+      queryCursor={step === "select" ? query.cursor : undefined}
       rows={rowsForStep()}
       selectedIndex={selected}
       showSearch={step === "select"}

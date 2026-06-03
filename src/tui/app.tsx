@@ -184,13 +184,13 @@ export function App() {
     if (languageWriteInFlight.current || language === tuiPreferences.language) return
     languageWriteInFlight.current = true
     setMessage(undefined)
-    setTuiPreferences((current) => ({ ...current, language }))
     try {
-      await withBusy(translate(language, "common.saving"), () => writeTuiLanguagePreference(language, preferencePath ? { path: preferencePath } : {}))
+      await writeTuiLanguagePreference(language, preferencePath ? { path: preferencePath } : {})
+      setTuiPreferences((current) => ({ ...current, language }))
       setPreferenceWarning(undefined)
       setMessage(translate(language, "language.saved"))
     } catch (caught) {
-      setPreferenceWarning(translate(language, "language.saveFailed", { message: caught instanceof Error ? caught.message : String(caught) }))
+      setPreferenceWarning(translate(tuiPreferences.language, "language.saveFailed", { message: caught instanceof Error ? caught.message : String(caught) }))
     } finally {
       languageWriteInFlight.current = false
     }
@@ -927,10 +927,10 @@ export function App() {
         <TuiKeybindProvider keybinds={tuiPreferences.keybinds}>
           <OpenCodeFrame>
             <Box flexDirection="column">
-              {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
-              {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
-              {busyMessage ? <OpenCodeBusyDialog message={busyMessage} /> : null}
-
+              {busyMessage ? <OpenCodeBusyDialog message={busyMessage} /> : (
+                <>
+                  {message ? <OpenCodeNotice>{message}</OpenCodeNotice> : null}
+                  {preferenceWarning ? <OpenCodeNotice>{preferenceWarning}</OpenCodeNotice> : null}
             {route === "home" ? <HomeScreen selection={config} language={tuiPreferences.language} onAction={handleHomeAction} onToggleLanguage={toggleLanguage} onQuit={exit} /> : null}
             {route === "select-config" ? (
               <SelectConfigScreen
@@ -1114,6 +1114,8 @@ export function App() {
                 onConfirm={confirmWrite}
               />
             ) : null}
+                </>
+              )}
             </Box>
           </OpenCodeFrame>
         </TuiKeybindProvider>

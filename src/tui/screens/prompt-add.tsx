@@ -1,7 +1,7 @@
 import React, { useState } from "react"
 import { normalizePromptFileName } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
 import { OpenCodePrompt, OpenCodeTextArea } from "../ui.js"
@@ -79,8 +79,8 @@ export function PromptAddScreen(props: {
       }
       if (matchesKeybind("left", input, key, keybinds)) setName((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setName((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setName(deleteEditableTextInputBackward)
-      else if (key.delete) setName(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setName(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setName(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) continueToContent()
       else {
         setError(undefined)
@@ -102,8 +102,8 @@ export function PromptAddScreen(props: {
     else if (matchesKeybind("right", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "right"))
     else if (matchesKeybind("up", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "up"))
     else if (matchesKeybind("down", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "down"))
-    else if (key.backspace) applyContentEdit(deleteBackward(content, contentCursor))
-    else if (key.delete) applyContentEdit(deleteForward(content, contentCursor))
+    else if (isBackwardDeleteInput(input, key)) applyContentEdit(deleteBackward(content, contentCursor))
+    else if (isForwardDeleteInput(input, key)) applyContentEdit(deleteForward(content, contentCursor))
     else if (matchesKeybind("confirm", input, key, keybinds)) applyContentEdit(insertNewline(content, contentCursor))
     else {
       setError(undefined)

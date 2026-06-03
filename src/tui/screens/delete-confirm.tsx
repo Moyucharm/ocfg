@@ -1,6 +1,6 @@
 import React, { useState } from "react"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { DeleteTargetState } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -37,8 +37,8 @@ export function DeleteConfirmScreen(props: {
       if (matchesKeybind("cancel", input, key, keybinds)) return props.onCancel()
       if (matchesKeybind("left", input, key, keybinds)) setToken((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setToken((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setToken(deleteEditableTextInputBackward)
-      else if (key.delete) setToken(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setToken(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setToken(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) props.onConfirm(token.value.trim())
       else setToken((current) => insertEditableTextInput(current, input))
       return

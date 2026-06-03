@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput } from "../src/tui/input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput } from "../src/tui/input.js"
 import { deleteBackward, deleteForward, insertNewline, insertText, moveCursor } from "../src/tui/text-editor.js"
 import { openCodeTextAreaRows, openCodeTextAreaViewport } from "../src/tui/ui.js"
 
@@ -43,5 +43,12 @@ describe("TUI text editor", () => {
     expect(inserted).toEqual({ value: "hello", cursor: { line: 0, column: 4 } })
     expect(deleteEditableTextInputBackward(inserted)).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
     expect(deleteEditableTextInputForward({ value: "hello", cursor: { line: 0, column: 3 } })).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
+  })
+
+  test("treats terminal DEL as backspace, not forward delete", () => {
+    expect(isBackwardDeleteInput("", { delete: true })).toBe(true)
+    expect(isBackwardDeleteInput("\x7f", { delete: true })).toBe(true)
+    expect(isForwardDeleteInput("\x7f", { delete: true })).toBe(false)
+    expect(isForwardDeleteInput("", { delete: true })).toBe(false)
   })
 })

@@ -4,7 +4,7 @@ import { isRecord } from "../../core/object-utils.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import type { EndpointKind } from "../../core/types.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
@@ -36,7 +36,6 @@ export function ProviderEditExistingScreen(props: {
   const defaultKindIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === inferredKind.kind))
   const [mode, setMode] = useState<Mode>("menu")
   const [selected, setSelected] = useState(0)
-  const [query, setQuery] = useState("")
   const [channelTypeIndex, setChannelTypeIndex] = useState(defaultKindIndex)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
   const [inputValue, setInputValue] = useState(() => editableTextInput())
@@ -81,13 +80,11 @@ export function ProviderEditExistingScreen(props: {
       setChannelTypeIndex(Math.max(0, channelTypeOptions.findIndex((option) => option.kind === (draft.endpointKind ?? inferredKind.kind ?? channelTypeOptions[0]!.kind))))
       setMode("channel-type")
       setSelected(0)
-      setQuery("")
       return
     }
     if (field === "cache") {
       setMode("cache")
       setSelected((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
-      setQuery("")
       return
     }
     if (field === "name") setInputValue(editableTextInput(draft.name ?? currentName))
@@ -109,7 +106,7 @@ export function ProviderEditExistingScreen(props: {
   }
 
   function runMenuIndex(index = selected) {
-    const item = openCodeMenuRows(menuGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
+    const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind === "item") startField(item.item.id as Field)
   }
 
@@ -119,14 +116,13 @@ export function ProviderEditExistingScreen(props: {
   }
 
   function runSelectIndex(index = selected) {
-    const item = openCodeMenuRows(selectGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
+    const item = openCodeMenuRows(selectGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
     if (mode === "channel-type") setDraft((current) => ({ ...current, endpointKind: item.item.id as EndpointKind }))
     if (mode === "cache") setDraft((current) => ({ ...current, setCacheKey: item.item.id === "true" }))
     const returnIndex = mode === "channel-type" || mode === "cache" ? menuIndexForField(mode) : 0
     setMode("menu")
     setSelected(returnIndex)
-    setQuery("")
   }
 
   useTuiInput((input, key) => {
@@ -139,27 +135,19 @@ export function ProviderEditExistingScreen(props: {
       }
       if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
-      else if (key.delete) setInputValue(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
       else setInputValue((current) => insertEditableTextInput(current, input))
       return
     }
 
     const groups = mode === "menu" ? menuGroups : selectGroups
-    const rows = openCodeMenuRows(groups, query)
+    const rows = openCodeMenuRows(groups, "")
     const count = rows.filter((row) => row.kind === "item").length
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       if (mode === "menu") props.onBack()
-      else {
-        setMode("menu")
-        setQuery("")
-      }
-      return
-    }
-    if (key.backspace || key.delete) {
-      setQuery((current) => current.slice(0, -1))
-      setSelected(0)
+      else setMode("menu")
       return
     }
     if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
@@ -167,11 +155,6 @@ export function ProviderEditExistingScreen(props: {
     if (matchesKeybind("confirm", input, key, keybinds)) {
       if (mode === "menu") runMenuIndex()
       else runSelectIndex()
-    }
-    const printable = printableInput(input)
-    if (printable && !matchesKeybind("confirm", input, key, keybinds)) {
-      setQuery((current) => `${current}${printable}`)
-      setSelected(0)
     }
   })
 
@@ -192,10 +175,9 @@ export function ProviderEditExistingScreen(props: {
   return (
     <OpenCodeMenu
       title={mode === "menu" ? t("provider.title.editId", { id: props.providerID }) : mode === "channel-type" ? t("provider.channelType") : t("provider.cacheKey")}
-      query={query}
-      rows={openCodeMenuRows(mode === "menu" ? menuGroups : selectGroups, query)}
+      query=""
+      rows={openCodeMenuRows(mode === "menu" ? menuGroups : selectGroups, "")}
       selectedIndex={selected}
-      showSearch
       footer={mode === "menu" ? [`${t("common.back")}\tesc`, `${t("common.open")}\tenter`] : [`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]}
       emptyText={error}
     />

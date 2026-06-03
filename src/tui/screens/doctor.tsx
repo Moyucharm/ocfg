@@ -9,7 +9,7 @@ import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { useTuiTheme } from "../theme.js"
 import type { TuiConfigSelection } from "../types.js"
-import { formatOpenCodeTitle } from "../ui.js"
+import { formatOpenCodeTitle, useDelayedLoading } from "../ui.js"
 
 const severities: Severity[] = ["high", "medium", "low"]
 
@@ -56,7 +56,9 @@ export function DoctorScreen(props: { selection: TuiConfigSelection; onBack: () 
     }
   }, [props.selection])
 
-  if (loading) return <Text>{formatOpenCodeTitle(t("doctor.title"))} {t("doctor.inspecting")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{formatOpenCodeTitle(t("doctor.title"))} {t("doctor.inspecting")}</Text> : null
   if (error) return <Text color="red">{t("doctor.failed", { message: error })}</Text>
 
   const grouped = groupDiagnostics(diagnostics)

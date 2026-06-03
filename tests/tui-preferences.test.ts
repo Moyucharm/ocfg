@@ -13,31 +13,39 @@ describe("TUI preferences", () => {
     expect(result.diagnostics).toEqual([])
   })
 
-  test("accepts theme, diff style, mouse, language, and keybind overrides", () => {
+  test("accepts theme, diff style, language, and keybind overrides", () => {
     const result = resolveTuiPreferences({
       theme: "system",
       diffStyle: "compact",
-      mouse: false,
       language: "zh-CN",
       keybinds: { quit: "ctrl+k" },
     })
 
     expect(result.preferences.theme).toBe("system")
     expect(result.preferences.diffStyle).toBe("compact")
-    expect(result.preferences.mouse).toBe(false)
     expect(result.preferences.language).toBe("zh-CN")
     expect(result.preferences.keybinds.quit).toEqual(["ctrl+k"])
     expect(result.diagnostics).toEqual([])
   })
 
-  test("reports invalid theme, diff style, mouse, and language while keeping safe defaults", () => {
+  test("reports invalid theme, diff style, and language while keeping safe defaults", () => {
+    const result = resolveTuiPreferences({ theme: "neon", diffStyle: "side-by-side", language: "fr" })
+
+    expect(result.preferences.theme).toBe(defaultTuiPreferences.theme)
+    expect(result.preferences.diffStyle).toBe(defaultTuiPreferences.diffStyle)
+    expect(result.preferences.language).toBe(defaultTuiPreferences.language)
+    expect(result.diagnostics).toHaveLength(3)
+  })
+
+  test("reports unsupported legacy mouse preference", () => {
     const result = resolveTuiPreferences({ theme: "neon", diffStyle: "side-by-side", mouse: "yes", language: "fr" })
 
     expect(result.preferences.theme).toBe(defaultTuiPreferences.theme)
     expect(result.preferences.diffStyle).toBe(defaultTuiPreferences.diffStyle)
-    expect(result.preferences.mouse).toBe(defaultTuiPreferences.mouse)
     expect(result.preferences.language).toBe(defaultTuiPreferences.language)
+    expect(result.preferences).not.toHaveProperty("mouse")
     expect(result.diagnostics).toHaveLength(4)
+    expect(result.diagnostics).toContain("TUI mouse preference is no longer supported; ignoring it.")
   })
 
   test("creates a TUI config file when saving language", async () => {
@@ -55,7 +63,7 @@ describe("TUI preferences", () => {
     await writeFile(filePath, `{
   // keep theme
   "theme": "system",
-  "mouse": false
+  "diffStyle": "compact"
 }
 `, "utf8")
 
@@ -65,7 +73,7 @@ describe("TUI preferences", () => {
     const parsed = parse(text)
     expect(text).toContain("// keep theme")
     expect(parsed.theme).toBe("system")
-    expect(parsed.mouse).toBe(false)
+    expect(parsed.diffStyle).toBe("compact")
     expect(parsed.language).toBe("zh-CN")
   })
 })

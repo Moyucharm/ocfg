@@ -4,7 +4,7 @@ import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { ProviderFlowDraft } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -19,7 +19,7 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const t = useTuiText()
   const [step, setStep] = useState<Step>("endpoint")
   const [selected, setSelected] = useState(0)
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(() => editableTextInput())
   const [endpointIndex, setEndpointIndex] = useState(0)
   const [providerID, setProviderID] = useState("")
   const [name, setName] = useState("")
@@ -83,12 +83,12 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       setApiKeyValue(inputValue.value)
       setStep("cache")
       setSelected(0)
-      setQuery("")
+      setQuery(editableTextInput())
     }
   }
 
   function runSelect(index = selected) {
-    const item = openCodeMenuRows(selectGroups, query).find((row) => row.kind === "item" && row.itemIndex === index)
+    const item = openCodeMenuRows(selectGroups, query.value).find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
     if (step === "endpoint") {
       const nextIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === item.item.id))
@@ -107,27 +107,51 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       }
       if (matchesKeybind("left", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "left"))
       else if (matchesKeybind("right", input, key, keybinds)) setInputValue((current) => moveEditableTextInput(current, "right"))
-      else if (key.backspace) setInputValue(deleteEditableTextInputBackward)
-      else if (key.delete) setInputValue(deleteEditableTextInputForward)
+      else if (isBackwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputBackward)
+      else if (isForwardDeleteInput(input, key)) setInputValue(deleteEditableTextInputForward)
       else if (matchesKeybind("confirm", input, key, keybinds)) savePrompt()
       else setInputValue((current) => insertEditableTextInput(current, input))
       return
     }
 
-    const rows = openCodeMenuRows(selectGroups, query)
+    const rows = openCodeMenuRows(selectGroups, query.value)
     const count = rows.filter((row) => row.kind === "item").length
-    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) props.onBack()
-    if (key.backspace || key.delete) {
-      setQuery((current) => current.slice(0, -1))
+    if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
+      props.onBack()
+      return
+    }
+    if (matchesKeybind("left", input, key, keybinds)) {
+      setQuery((current) => moveEditableTextInput(current, "left"))
+      return
+    }
+    if (matchesKeybind("right", input, key, keybinds)) {
+      setQuery((current) => moveEditableTextInput(current, "right"))
+      return
+    }
+    if (isBackwardDeleteInput(input, key)) {
+      setQuery(deleteEditableTextInputBackward)
       setSelected(0)
       return
     }
-    if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
-    if (matchesKeybind("down", input, key, keybinds)) setSelected((current) => (current === count - 1 ? 0 : current + 1))
-    if (matchesKeybind("confirm", input, key, keybinds)) runSelect()
-    const printable = printableInput(input)
-    if (printable && !matchesKeybind("confirm", input, key, keybinds)) {
-      setQuery((current) => `${current}${printable}`)
+    if (isForwardDeleteInput(input, key)) {
+      setQuery(deleteEditableTextInputForward)
+      setSelected(0)
+      return
+    }
+    if (matchesKeybind("up", input, key, keybinds)) {
+      setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))
+      return
+    }
+    if (matchesKeybind("down", input, key, keybinds)) {
+      setSelected((current) => (current === count - 1 ? 0 : current + 1))
+      return
+    }
+    if (matchesKeybind("confirm", input, key, keybinds)) {
+      runSelect()
+      return
+    }
+    if (printableInput(input)) {
+      setQuery((current) => insertEditableTextInput(current, input))
       setSelected(0)
     }
   })
@@ -147,5 +171,5 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
     )
   }
 
-  return <OpenCodeMenu title={step === "endpoint" ? t("provider.title.connect") : t("provider.cacheKey")} query={query} rows={openCodeMenuRows(selectGroups, query)} selectedIndex={selected} showSearch footer={[`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]} />
+  return <OpenCodeMenu title={step === "endpoint" ? t("provider.title.connect") : t("provider.cacheKey")} query={query.value} queryCursor={query.cursor} rows={openCodeMenuRows(selectGroups, query.value)} selectedIndex={selected} showSearch footer={[`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]} />
 }

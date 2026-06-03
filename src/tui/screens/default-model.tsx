@@ -7,7 +7,7 @@ import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 type Step = "target" | "model"
 
@@ -91,7 +91,9 @@ export function DefaultModelScreen(props: {
     }
   }, [props.selection])
 
-  if (loading) return <Text>{t("defaultModel.loading")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{t("defaultModel.loading")}</Text> : null
   if (error) return <Text color="red">{t("defaultModel.failed", { message: error })}</Text>
 
   return <OpenCodeMenu title={step === "target" ? t("defaultModel.title.default") : t("defaultModel.title.model")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={step === "model" ? [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`] : [`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />

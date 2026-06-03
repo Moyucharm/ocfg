@@ -2,6 +2,7 @@ import { useInput, useStdin } from "ink"
 import { cursorAtEnd, deleteBackward, deleteForward, insertText, moveCursor, type TextCursor } from "./text-editor.js"
 
 type InputHandler = Parameters<typeof useInput>[0]
+type DeleteInputKey = { backspace?: boolean; delete?: boolean }
 
 export function printableInput(input: string) {
   const printable = input.replace(/[\u0000-\u001F\u007F]/g, "")
@@ -41,6 +42,14 @@ export function deleteEditableTextInputBackward(current: EditableTextInput) {
 
 export function deleteEditableTextInputForward(current: EditableTextInput) {
   return deleteForward(current.value, current.cursor)
+}
+
+export function isBackwardDeleteInput(input: string, key: DeleteInputKey) {
+  return key.backspace === true || key.delete === true || input === "\b" || input === "\x7f" || input === "\x1B\b" || input === "\x1B\x7f"
+}
+
+export function isForwardDeleteInput(input: string, key: DeleteInputKey) {
+  return (input === "\x1B[3~" || input === "[3~") && !isBackwardDeleteInput(input, key)
 }
 
 export function useTuiInput(handler: InputHandler) {

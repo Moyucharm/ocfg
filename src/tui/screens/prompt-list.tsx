@@ -18,7 +18,7 @@ import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function PromptListScreen(props: {
   selection: TuiConfigSelection
@@ -197,7 +197,9 @@ export function PromptListScreen(props: {
     }
   }, [props.selection])
 
-  if (loading) return <Text>{t("prompt.loading")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{t("prompt.loading")}</Text> : null
   if (error) return <Text color="red">{t("prompt.failed", { message: error })}</Text>
 
   return <OpenCodeMenu title={t("prompt.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} />

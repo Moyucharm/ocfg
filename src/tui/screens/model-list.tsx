@@ -7,7 +7,7 @@ import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function ModelListScreen(props: {
   selection: TuiConfigSelection
@@ -95,7 +95,9 @@ export function ModelListScreen(props: {
     }
   }, [props.providerID, props.selection])
 
-  if (loading) return <Text>{t("model.loading")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{t("model.loading")}</Text> : null
   if (error) return <Text color="red">{t("model.failed", { message: error })}</Text>
 
   return <OpenCodeMenu title={t("model.select")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.add")}\tctrl+a`, `${t("common.delete")}\td`, `${t("common.back")}\tesc`]} />

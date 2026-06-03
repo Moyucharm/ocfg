@@ -6,7 +6,7 @@ import { isExaSearchEnabled } from "../../core/search-toggle.js"
 import { useTuiText } from "../i18n.js"
 import { useOpenCodeMenuInput } from "../menu-input.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function ToolsScreen(props: {
   selection: TuiConfigSelection
@@ -65,7 +65,9 @@ export function ToolsScreen(props: {
     }
   }, [props.selection, props.refreshKey])
 
-  if (loading) return <Text>{t("tools.loading")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{t("tools.loading")}</Text> : null
   if (error) return <Text color="red">{t("tools.failed", { message: error })}</Text>
 
   return <OpenCodeMenu title={t("tools.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.toggle")}\tenter`]} />

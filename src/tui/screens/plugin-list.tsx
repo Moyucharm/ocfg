@@ -8,7 +8,7 @@ import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { TuiConfigSelection } from "../types.js"
-import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
+import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
 export function PluginListScreen(props: {
   selection: TuiConfigSelection
@@ -131,7 +131,9 @@ export function PluginListScreen(props: {
     }
   }, [props.selection])
 
-  if (loading) return <Text>{t("plugin.loading")}</Text>
+  const showLoading = useDelayedLoading(loading)
+
+  if (loading) return showLoading ? <Text>{t("plugin.loading")}</Text> : null
   if (error) return <Text color="red">{t("plugin.failed", { message: error })}</Text>
 
   return <OpenCodeMenu title={t("plugin.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} />

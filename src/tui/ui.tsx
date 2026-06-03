@@ -313,7 +313,7 @@ export function maskSecret(value: string) {
 }
 
 export function openCodeMenuItemColor(item: OpenCodeMenuItem, theme: TuiTheme) {
-  if (item.selected) return theme.colors.primary
+  if (item.selected) return theme.colors.highlightText
   if (item.disabled || item.tone === "muted") return theme.colors.muted
   if (item.tone === "success") return theme.colors.success
   if (item.tone === "danger" || item.danger) return theme.colors.error
@@ -331,6 +331,21 @@ export function OpenCodeFrame(props: { children: ReactNode }) {
       </Box>
     </Box>
   )
+}
+
+export function useDelayedLoading(loading: boolean, delayMs = 150) {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (!loading) {
+      setVisible(false)
+      return
+    }
+    const timer = setTimeout(() => setVisible(true), delayMs)
+    return () => clearTimeout(timer)
+  }, [delayMs, loading])
+
+  return loading && visible
 }
 
 export function OpenCodeActionLine(props: { item: OpenCodeMenuItem; selected: boolean; width?: number; labelColumnWidth?: number }) {
@@ -354,6 +369,7 @@ export function OpenCodeMenu(props: {
   rows: OpenCodeMenuRow[]
   selectedIndex: number
   showSearch?: boolean
+  queryCursor?: TextCursor
   footer?: string[]
   footerRight?: ReactNode
   emptyText?: string
@@ -361,8 +377,15 @@ export function OpenCodeMenu(props: {
   const theme = useTuiTheme()
   const t = useTuiText()
   const { stdout } = useStdout()
+  const [searchCursorVisible, setSearchCursorVisible] = useState(true)
   const contentWidth = terminalContentWidth(stdout.columns)
   const showSearch = props.showSearch === true
+  const searchCursor = normalizeCursor(props.query, props.queryCursor ?? cursorAtEnd(props.query))
+  const queryChars = Array.from(props.query)
+  const queryCursorOffset = Math.max(0, Math.min(queryChars.length, searchCursor.column))
+  const queryBefore = queryChars.slice(0, queryCursorOffset).join("")
+  const queryCursorChar = queryChars[queryCursorOffset]
+  const queryAfter = queryChars.slice(queryCursorOffset + (queryCursorChar ? 1 : 0)).join("")
   const selectedRow = props.rows.find((row) => row.kind === "item" && row.itemIndex === props.selectedIndex)
   const selectedDetail = selectedRow?.kind === "item" ? selectedRow.item.detail : undefined
   const hasFooter = Boolean(props.footer?.length || props.footerRight)
@@ -372,6 +395,12 @@ export function OpenCodeMenu(props: {
     openCodeMenuContentHeight({ showSearch, hasFooter, hasDetail: Boolean(selectedDetail), terminalRows: stdout.rows }),
   )
   const labelColumnWidth = menuLabelColumnWidth(props.rows, contentWidth)
+
+  useEffect(() => {
+    const timer = setInterval(() => setSearchCursorVisible((visible) => !visible), 550)
+    return () => clearInterval(timer)
+  }, [])
+
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" paddingX={5}>
@@ -383,8 +412,18 @@ export function OpenCodeMenu(props: {
         <>
           <Box paddingX={5}>
             <Text>
-              <Text backgroundColor={theme.colors.highlight} color={theme.colors.highlightText}>{props.query ? props.query[0] : t("ui.search")[0]}</Text>
-              <Text color={props.query ? theme.colors.primary : theme.colors.muted}>{props.query ? props.query.slice(1) : t("ui.search").slice(1)}</Text>
+              {props.query ? (
+                <>
+                  <Text color={theme.colors.primary}>{queryBefore}</Text>
+                  <Text backgroundColor={searchCursorVisible ? theme.colors.highlight : undefined} color={searchCursorVisible ? theme.colors.highlightText : theme.colors.primary}>{queryCursorChar ?? " "}</Text>
+                  <Text color={theme.colors.primary}>{queryAfter}</Text>
+                </>
+              ) : (
+                <>
+                  <Text backgroundColor={searchCursorVisible ? theme.colors.highlight : undefined} color={searchCursorVisible ? theme.colors.highlightText : theme.colors.primary}> </Text>
+                  <Text color={theme.colors.muted}>{t("ui.search")}</Text>
+                </>
+              )}
             </Text>
           </Box>
           <Text> </Text>
@@ -582,11 +621,14 @@ export function OpenCodeNotice(props: { children: ReactNode; tone?: "warning" | 
 export function OpenCodeBusyDialog(props: { message: string }) {
   const theme = useTuiTheme()
   const t = useTuiText()
+  const { stdout } = useStdout()
+  const contentWidth = terminalContentWidth(stdout.columns)
+  const dialogWidth = Math.max(1, Math.min(contentWidth, Math.max(24, contentWidth - 10), 42))
   return (
-    <Box paddingX={5}>
-      <Box flexDirection="column" borderStyle="round" borderColor={theme.colors.highlight} paddingX={2} paddingY={1}>
+    <Box width={contentWidth} height={Math.max(1, stdout.rows ?? 24)} justifyContent="center" alignItems="center">
+      <Box width={dialogWidth} flexDirection="column" borderStyle="round" borderColor={theme.colors.highlight} paddingX={2} paddingY={1}>
         <Text bold color={theme.colors.section}>{t("common.saving")}</Text>
-        <Text color={theme.colors.primary}>{props.message}</Text>
+        {props.message !== t("common.saving") ? <Text color={theme.colors.primary}>{props.message}</Text> : null}
       </Box>
     </Box>
   )
