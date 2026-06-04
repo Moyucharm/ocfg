@@ -1,34 +1,39 @@
 # OCfg
 
-OpenCode configuration editor.
+`ocfg` is a CLI and terminal UI for editing OpenCode configuration.
+
+It focuses on everyday OpenCode config work: adding providers, reviewing models, managing plugins, switching prompts/rules, setting default models, and running diagnostics without manually rewriting `opencode.jsonc`.
 
 [中文文档](./README.zh-CN.md)
 
 ## Features
 
-- Inspect config health with `doctor`.
-- Validate config against the OpenCode schema with `validate`.
-- Add providers from protocol-oriented endpoint templates.
-- Edit provider name, channel type, base URL, API key file reference, and `setCacheKey`.
-- Edit model display names, context/input/output limits, GPT-5 long-context presets, and common capability flags.
-- Add or delete models under existing providers.
-- Delete providers with reference checks for top-level defaults.
+- Diagnose and validate OpenCode config with `doctor` and `validate`.
+- Add, edit, or delete providers using protocol-oriented endpoint kinds, managed API key files, schema validation, and Diff review.
+- Detect models from compatible endpoints or enter IDs manually, then review context/input/output limits, GPT-5 long-context presets, and common capability flags.
+- Install, enable, disable, edit, and remove OpenCode npm plugins and local plugin files.
+- Manage prompt and rule files for `AGENTS.md`, top-level `instructions`, and per-agent `agent.<id>.prompt`.
 - Set or clear top-level `model` and `small_model` from the TUI.
-- Toggle OpenCode's built-in Exa `websearch`/`webfetch` support from the TUI tools menu.
-- Install, enable, and disable OpenCode npm plugins and local plugin files.
-- Manage OpenCode prompt/rule files, including `AGENTS.md`, top-level `instructions`, and per-agent `agent.<id>.prompt`.
-- Preserve JSONC comments outside edited paths where practical.
-- Write through validation, backup creation, and atomic rename.
+- Toggle OpenCode Exa `websearch`/`webfetch` support from the TUI tools menu.
+- Preserve JSONC comments where practical and write through validation, backups, and atomic rename.
+
+## Package Status
+
+The npm package name is `ocfg`. This project is being prepared for the npm `v0.1.0` release.
+
+Runtime requirement: Node.js `>=20`.
 
 ## Installation
 
-Install the package when published:
+After the npm package is published:
 
 ```bash
 npm install -g ocfg
 ```
 
-Run from a source checkout:
+The package binary is named `ocfg`.
+
+Run from a source checkout before the npm release:
 
 ```bash
 npm install
@@ -36,13 +41,12 @@ npm run build
 node dist/cli.js --help
 ```
 
-The package binary is named `ocfg`.
-
 ## Quick Start
 
-Open the interactive terminal UI:
+Open the interactive terminal UI. Running `ocfg` without a subcommand opens the same TUI as `ocfg tui`:
 
 ```bash
+ocfg
 ocfg tui
 ```
 
@@ -58,7 +62,7 @@ Validate the current global OpenCode config:
 ocfg validate
 ```
 
-Add a provider with a managed secret file:
+Add a provider with a managed API key file:
 
 ```bash
 ocfg add provider custom \
@@ -66,6 +70,17 @@ ocfg add provider custom \
   --base-url https://example.com/v1 \
   --api-key sk-example \
   --model example-model
+```
+
+Preview a write without changing files:
+
+```bash
+ocfg add provider custom \
+  --channel-type openai-compatible \
+  --base-url https://example.com/v1 \
+  --api-key sk-example \
+  --model example-model \
+  --dry-run
 ```
 
 Install an OpenCode npm plugin:
@@ -84,17 +99,6 @@ Install a default prompt template as the selected `AGENTS.md` rules file:
 
 ```bash
 ocfg switch prompt build-focused --rules
-```
-
-Preview a write without changing files:
-
-```bash
-ocfg add provider custom \
-  --channel-type openai-compatible \
-  --base-url https://example.com/v1 \
-  --api-key sk-example \
-  --model example-model \
-  --dry-run
 ```
 
 ## Config Targets
@@ -295,7 +299,7 @@ Referenced deletes require an exact confirmation token. For example, deleting pr
 The TUI is opened with `ocfg tui`.
 
 - `Doctor` shows actionable config diagnostics.
-- `Add Provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and diff review.
+- `Connect provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and Diff review.
 - `Edit Provider` selects an existing provider, edits provider fields, can enter model management, and can delete the selected provider with confirmation.
 - `Manage Plugins` lists npm and local plugins, installs npm packages into config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
 - `Manage Prompts` first separates `Shared rules (AGENTS.md)` from `Agent prompts (agent.prompt)`. Shared rules lists and edits the active `AGENTS.md`, reusable `AGENTS.md` configs, and configured `instructions`; it can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules. Agent prompts lists prompt files and bundled templates, edits multi-line prompt content with arrow-key cursor movement and wrapping, and applies prompts only to `build`, `plan`, or a custom agent.

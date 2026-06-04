@@ -1,32 +1,39 @@
 # OCfg
 
-OpenCode 配置编辑器。
+`ocfg` 是用于编辑 OpenCode 配置的 CLI 和终端 TUI。
+
+它聚焦日常 OpenCode 配置工作：添加渠道、审查模型、管理插件、切换提示词/规则、设置默认模型，以及在不手动重写 `opencode.jsonc` 的情况下运行诊断。
+
+[English README](./README.md)
 
 ## 功能特性
 
-- 使用 `doctor` 检查配置健康状态。
-- 使用 `validate` 按 OpenCode schema 验证配置。
-- 通过面向协议的端点模板添加提供商。
-- 编辑提供商名称、通道类型、基础 URL、API key 文件引用和 `setCacheKey`。
-- 编辑模型显示名称、上下文/输入/输出限制、GPT-5 长上下文 preset 和常见能力标记。
-- 在现有提供商下添加或删除模型。
-- 删除提供商时检查顶层默认引用。
+- 使用 `doctor` 和 `validate` 诊断并验证 OpenCode 配置。
+- 通过面向协议的端点类型添加、编辑或删除渠道，API key 写入托管密钥文件，并在写入前执行 schema 验证和 Diff 审查。
+- 从兼容端点检测模型，或手动输入模型 ID，然后审查上下文/输入/输出限制、GPT-5 长上下文 preset 和常见能力标记。
+- 安装、启用、禁用、编辑和移除 OpenCode npm 插件与本地插件文件。
+- 管理 `AGENTS.md`、顶层 `instructions` 和单个 agent 的 `agent.<id>.prompt` 对应的提示词/规则文件。
 - 在 TUI 中设置或清除顶层 `model` 和 `small_model`。
-- 在 TUI 小工具中切换 OpenCode 内置 Exa `websearch`/`webfetch` 支持。
-- 安装、启用和禁用 OpenCode npm 插件与本地插件文件。
-- 管理 OpenCode 提示词/规则文件，覆盖 `AGENTS.md`、顶层 `instructions` 和单个 agent 的 `agent.<id>.prompt`。
-- 尽可能保留编辑路径之外的 JSONC 注释。
-- 写入时执行验证、备份创建和原子重命名。
+- 在 TUI 小工具中切换 OpenCode Exa `websearch`/`webfetch` 支持。
+- 尽可能保留 JSONC 注释，并通过验证、备份和原子重命名完成写入。
+
+## 发布状态
+
+npm 包名是 `ocfg`，当前项目准备发布 npm `v0.1.0`。
+
+运行要求：Node.js `>=20`。
 
 ## 安装
 
-发布后安装包：
+发布到 npm 后：
 
 ```bash
 npm install -g ocfg
 ```
 
-从源码检出运行：
+包的可执行命令名为 `ocfg`。
+
+npm 发布前可以从源码检出运行：
 
 ```bash
 npm install
@@ -34,13 +41,12 @@ npm run build
 node dist/cli.js --help
 ```
 
-包的可执行命令名为 `ocfg`。
-
 ## 快速开始
 
-打开交互式终端 UI：
+打开交互式终端 UI。直接运行 `ocfg` 与运行 `ocfg tui` 一样，都会进入 TUI：
 
 ```bash
+ocfg
 ocfg tui
 ```
 
@@ -56,7 +62,7 @@ ocfg doctor
 ocfg validate
 ```
 
-添加一个使用托管密钥文件的提供商：
+添加一个使用托管 API key 文件的渠道：
 
 ```bash
 ocfg add provider custom \
@@ -64,6 +70,17 @@ ocfg add provider custom \
   --base-url https://example.com/v1 \
   --api-key sk-example \
   --model example-model
+```
+
+预览写入内容而不修改文件：
+
+```bash
+ocfg add provider custom \
+  --channel-type openai-compatible \
+  --base-url https://example.com/v1 \
+  --api-key sk-example \
+  --model example-model \
+  --dry-run
 ```
 
 安装一个 OpenCode npm 插件：
@@ -82,17 +99,6 @@ ocfg install plugin ./my-plugin.ts --local --config-scope project
 
 ```bash
 ocfg switch prompt build-focused --rules
-```
-
-预览写入内容而不修改文件：
-
-```bash
-ocfg add provider custom \
-  --channel-type openai-compatible \
-  --base-url https://example.com/v1 \
-  --api-key sk-example \
-  --model example-model \
-  --dry-run
 ```
 
 ## 配置目标
@@ -293,7 +299,7 @@ ocfg tui
 使用 `ocfg tui` 打开 TUI。
 
 - `Doctor` 显示可执行的配置诊断信息。
-- `Add Provider` 通过端点类型、提供商元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 diff 审查来创建提供商。
+- `添加渠道` 通过端点类型、渠道元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 Diff 审查来创建渠道。
 - `Edit Provider` 选择现有提供商，编辑提供商字段，可进入模型管理，也可在二次确认后删除所选提供商。
 - `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
 - `Manage Prompts` 先分为 `通用规则（AGENTS.md）` 和 `智能体提示词（agent.prompt）`。通用规则列出并编辑当前 `AGENTS.md`、可复用 `AGENTS.md` 配置和已配置的 `instructions`；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则。智能体提示词列出提示词文件和内置模板，用支持方向键移动和自动换行的多行编辑器编辑内容，并且只应用到 `build`、`plan` 或自定义 Agent。
@@ -301,7 +307,7 @@ ocfg tui
 - `Tools` 包含 OpenCode Exa 搜索开关。开启会把 `permission.websearch = "allow"` 和 `permission.webfetch = "allow"` 写入当前选择的全局或项目配置，然后设置当前用户的 `OPENCODE_ENABLE_EXA=1`。关闭只设置 `OPENCODE_ENABLE_EXA=0`，不会改动配置。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。
 
-大多数会修改配置的 TUI 流程会在写入前显示 diff，并要求明确确认。Exa 搜索工具按设计是一键开关：它会立即写入，修改所选 OpenCode 配置时仍会创建常规备份，并且只更新当前用户的环境变量。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
+大多数会修改配置的 TUI 流程会在写入前显示 Diff，并要求明确确认。Exa 搜索工具按设计是一键开关：它会立即写入，修改所选 OpenCode 配置时仍会创建常规备份，并且只更新当前用户的环境变量。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
 
 Exa 搜索的环境变量变更在 Windows 上使用用户级 `setx`，不需要管理员权限。macOS/Linux 会先复用 `~/.bashrc`、`~/.zshrc` 或 `~/.profile` 里已有的 ocfg Exa 管理块；如果不存在，ocfg 才会按当前 shell 选择一个配置文件写入。请关闭并重新打开当前终端，或打开新的终端窗口，然后再启动 OpenCode。
 
