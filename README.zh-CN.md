@@ -6,6 +6,12 @@
 
 [English README](./README.md)
 
+## 友情链接
+
+[LINUX DO](https://linux.do/) 论坛为本项目提供了社区支持。关注LD喵，关注LD谢谢喵。
+
+专注 Claude Code 配置编辑的 [zcf](https://github.com/UfoMiao/zcf) 和优秀的 GUI OpenCode 配置编辑器 [AI Toolbox](https://github.com/coulsontl/ai-toolbox) 为本项目的实现提供了灵感，在此感谢这些项目的开发者和贡献者。
+
 ## 功能特性
 
 - 使用 `doctor` 和 `validate` 诊断并验证 OpenCode 配置。
@@ -360,8 +366,3 @@ npm run build
 ```bash
 node dist/cli.js --help
 ```
-
-## 友情链接
-[LINUX DO](https://linux.do/) 论坛为本项目提供了社区支持。关注LD喵，关注LD谢谢喵。
-
-专注 Claude Code 配置编辑的 [zcf](https://github.com/UfoMiao/zcf) 和优秀的 GUI OpenCode 配置编辑器 [AI Toolbox](https://github.com/coulsontl/ai-toolbox) 为本项目的实现提供了灵感，在此感谢这些项目的开发者和贡献者。 

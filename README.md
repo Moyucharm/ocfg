@@ -6,6 +6,12 @@ It focuses on everyday OpenCode config work: adding providers, reviewing models,
 
 [中文文档](./README.zh-CN.md)
 
+## Friendly Links
+
+The [LINUX DO](https://linux.do/) forum provides community support for this project. Follow LD, meow; thank you for following LD, meow.
+
+[zcf](https://github.com/UfoMiao/zcf), which focuses on Claude Code configuration editing, and [AI Toolbox](https://github.com/coulsontl/ai-toolbox), an excellent GUI OpenCode editor, inspired this project's implementation. Thanks to the developers and contributors of these projects.
+
 ## Features
 
 - Diagnose and validate OpenCode config with `doctor` and `validate`.
@@ -360,9 +366,3 @@ Run built CLI help:
 ```bash
 node dist/cli.js --help
 ```
-
-## Friendly Links
-
-The [LINUX DO](https://linux.do/) forum provides community support for this project. Follow LD, meow; thank you for following LD, meow.
-
-[zcf](https://github.com/UfoMiao/zcf), which focuses on Claude Code configuration editing, and [AI Toolbox](https://github.com/coulsontl/ai-toolbox), an excellent GUI OpenCode editor, inspired this project's implementation. Thanks to the developers and contributors of these projects.
