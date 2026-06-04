@@ -19,7 +19,7 @@ It focuses on everyday OpenCode config work: adding providers, reviewing models,
 
 ## Package Status
 
-The npm package name is `ocfg`. This project is being prepared for the npm `v0.1.0` release.
+The npm package name is `ocfg`. Current release: `v0.1.0`.
 
 Runtime requirement: Node.js `>=20`.
 
