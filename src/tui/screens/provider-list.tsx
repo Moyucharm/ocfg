@@ -6,6 +6,7 @@ import { readConfig } from "../../core/config-reader.js"
 import { useTuiText } from "../i18n.js"
 import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
@@ -16,7 +17,6 @@ export function ProviderListScreen(props: {
 }) {
   const t = useTuiText()
   const [providers, setProviders] = useState<Array<{ id: string; name?: string; modelCount: number }>>([])
-  const [selected, setSelected] = useState(0)
   const [query, setQuery] = useState(() => editableTextInput())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
@@ -31,12 +31,19 @@ export function ProviderListScreen(props: {
         description: provider.name,
         meta: t("provider.count", { count: provider.modelCount }),
       })),
-    ],
+      ],
   }]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({
+    memoryKey: `provider-list:${props.selection.target?.path ?? props.selection.scope}`,
+    groups,
+    query: query.value,
+    ready: !loading && !error,
+  })
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, query.value).find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
+    rememberSelected(index)
     props.onSelectProvider?.(item.item.id)
   }
 

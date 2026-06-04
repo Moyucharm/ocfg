@@ -3,6 +3,12 @@ import { getEndpointTemplate } from "../templates/index.js"
 import { isRecord } from "./object-utils.js"
 import { looksLikeSecret } from "./secret-strategy.js"
 
+export type DoctorLanguage = "en" | "zh-CN"
+
+export type DoctorOptions = {
+  language?: DoctorLanguage
+}
+
 function looksLikePlaintextApiKey(value: string) {
   return looksLikeSecret(value)
 }
@@ -15,7 +21,47 @@ function providerModels(config: Record<string, unknown>, providerID: string): Re
   return isRecord(providerConfig.models) ? providerConfig.models : undefined
 }
 
-function checkModelReference(config: Record<string, unknown>, key: "model" | "small_model"): Diagnostic[] {
+function modelReferenceFormatMessage(language: DoctorLanguage, key: "model" | "small_model") {
+  if (language === "zh-CN") return `${key} 必须使用 provider_id/model_id 格式`
+  return `${key} must use provider_id/model_id format`
+}
+
+function missingProviderMessage(language: DoctorLanguage, key: "model" | "small_model", providerID: string) {
+  if (language === "zh-CN") return `${key} 引用了当前配置中未定义的渠道 "${providerID}"；它可能是内置或合并后的渠道`
+  return `${key} references provider "${providerID}" that is not defined in this config; it may be a built-in or merged provider`
+}
+
+function missingModelMessage(language: DoctorLanguage, key: "model" | "small_model", modelRef: string) {
+  if (language === "zh-CN") return `${key} 引用了缺失的模型 "${modelRef}"`
+  return `${key} references missing model "${modelRef}"`
+}
+
+function plaintextApiKeyMessage(language: DoctorLanguage, providerID: string) {
+  if (language === "zh-CN") return `渠道 "${providerID}" 似乎存储了明文 API key；建议使用 {env:...} 或 {file:...}`
+  return `Provider "${providerID}" appears to store a plaintext API key; prefer {env:...} or {file:...}`
+}
+
+function invalidBaseUrlMessage(language: DoctorLanguage, providerID: string) {
+  if (language === "zh-CN") return `渠道 "${providerID}" 的 baseURL 必须是字符串`
+  return `Provider "${providerID}" baseURL must be a string`
+}
+
+function missingProviderModelsMessage(language: DoctorLanguage, providerID: string) {
+  if (language === "zh-CN") return `渠道 "${providerID}" 没有配置模型`
+  return `Provider "${providerID}" has no configured models`
+}
+
+function mismatchedProviderNpmMessage(language: DoctorLanguage, providerID: string, npm: string, modelID: string, expectedNpm: string) {
+  if (language === "zh-CN") return `渠道 "${providerID}" 使用 ${npm}，但模型 "${modelID}" 看起来可能需要 ${expectedNpm}`
+  return `Provider "${providerID}" uses ${npm}, but model "${modelID}" looks like it may expect ${expectedNpm}`
+}
+
+function missingModelLimitMessage(language: DoctorLanguage, providerID: string, modelID: string) {
+  if (language === "zh-CN") return `模型 "${providerID}/${modelID}" 缺少 limit 元数据`
+  return `Model "${providerID}/${modelID}" has no limit metadata`
+}
+
+function checkModelReference(config: Record<string, unknown>, key: "model" | "small_model", language: DoctorLanguage): Diagnostic[] {
   const value = config[key]
   if (typeof value !== "string" || value.length === 0) return []
 
@@ -26,7 +72,7 @@ function checkModelReference(config: Record<string, unknown>, key: "model" | "sm
         severity: "high",
         source: "doctor",
         path: `/${key}`,
-        message: `${key} must use provider_id/model_id format`,
+        message: modelReferenceFormatMessage(language, key),
       },
     ]
   }
@@ -40,7 +86,7 @@ function checkModelReference(config: Record<string, unknown>, key: "model" | "sm
         severity: "low",
         source: "doctor",
         path: `/${key}`,
-        message: `${key} references provider "${providerID}" that is not defined in this config; it may be a built-in or merged provider`,
+        message: missingProviderMessage(language, key, providerID),
       },
     ]
   }
@@ -50,7 +96,7 @@ function checkModelReference(config: Record<string, unknown>, key: "model" | "sm
         severity: "high",
         source: "doctor",
         path: `/${key}`,
-        message: `${key} references missing model "${providerID}/${modelID}"`,
+        message: missingModelMessage(language, key, `${providerID}/${modelID}`),
       },
     ]
   }
@@ -58,7 +104,7 @@ function checkModelReference(config: Record<string, unknown>, key: "model" | "sm
   return []
 }
 
-function checkProviders(config: Record<string, unknown>): Diagnostic[] {
+function checkProviders(config: Record<string, unknown>, language: DoctorLanguage): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   if (!isRecord(config.provider)) return diagnostics
 
@@ -73,7 +119,7 @@ function checkProviders(config: Record<string, unknown>): Diagnostic[] {
           severity: "medium",
           source: "doctor",
           path: `${path}/options/apiKey`,
-          message: `Provider "${providerID}" appears to store a plaintext API key; prefer {env:...} or {file:...}`,
+          message: plaintextApiKeyMessage(language, providerID),
         })
       }
       if ("baseURL" in options && typeof options.baseURL !== "string") {
@@ -81,7 +127,7 @@ function checkProviders(config: Record<string, unknown>): Diagnostic[] {
           severity: "high",
           source: "doctor",
           path: `${path}/options/baseURL`,
-          message: `Provider "${providerID}" baseURL must be a string`,
+          message: invalidBaseUrlMessage(language, providerID),
         })
       }
     }
@@ -91,7 +137,7 @@ function checkProviders(config: Record<string, unknown>): Diagnostic[] {
         severity: "high",
         source: "doctor",
         path: `${path}/models`,
-        message: `Provider "${providerID}" has no configured models`,
+        message: missingProviderModelsMessage(language, providerID),
       })
       continue
     }
@@ -105,7 +151,7 @@ function checkProviders(config: Record<string, unknown>): Diagnostic[] {
           severity: "medium",
           source: "doctor",
           path: `${path}/npm`,
-          message: `Provider "${providerID}" uses ${npm}, but model "${modelID}" looks like it may expect ${expectedNpm}`,
+          message: mismatchedProviderNpmMessage(language, providerID, npm, modelID, expectedNpm),
         })
       }
       if (!isRecord(modelConfig.limit)) {
@@ -113,7 +159,7 @@ function checkProviders(config: Record<string, unknown>): Diagnostic[] {
           severity: "medium",
           source: "doctor",
           path: `${path}/models/${modelID}/limit`,
-          message: `Model "${providerID}/${modelID}" has no limit metadata`,
+          message: missingModelLimitMessage(language, providerID, modelID),
         })
       }
     }
@@ -128,15 +174,16 @@ function expectedNpmForModel(modelID: string) {
   return undefined
 }
 
-export function runDoctor(document: ConfigDocument): Diagnostic[] {
+export function runDoctor(document: ConfigDocument, options: DoctorOptions = {}): Diagnostic[] {
+  const language = options.language ?? "en"
   const diagnostics: Diagnostic[] = [...document.diagnostics]
   if (document.diagnostics.some((diagnostic) => diagnostic.source === "parse" && diagnostic.severity === "high")) {
     return diagnostics
   }
 
-  diagnostics.push(...checkModelReference(document.data, "model"))
-  diagnostics.push(...checkModelReference(document.data, "small_model"))
-  diagnostics.push(...checkProviders(document.data))
+  diagnostics.push(...checkModelReference(document.data, "model", language))
+  diagnostics.push(...checkModelReference(document.data, "small_model", language))
+  diagnostics.push(...checkProviders(document.data, language))
   return diagnostics
 }
 

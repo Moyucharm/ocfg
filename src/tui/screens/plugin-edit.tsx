@@ -4,6 +4,7 @@ import type { PluginListItem, PluginOptions } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
 import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
 
 type Mode = "menu" | "options"
@@ -28,7 +29,6 @@ export function PluginEditScreen(props: {
 }) {
   const t = useTuiText()
   const [mode, setMode] = useState<Mode>("menu")
-  const [selected, setSelected] = useState(0)
   const [inputValue, setInputValue] = useState(() => editableTextInput(props.plugin.options ? JSON.stringify(props.plugin.options) : "{}"))
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
@@ -41,6 +41,7 @@ export function PluginEditScreen(props: {
       { id: "disable", label: t("plugin.disable"), danger: true },
     ],
   }]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({ memoryKey: `plugin-edit:${props.plugin.packageName}`, groups: menuGroups })
 
   function startAction(action: string) {
     setError(undefined)
@@ -63,7 +64,10 @@ export function PluginEditScreen(props: {
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
-    if (item?.kind === "item") startAction(item.item.id)
+    if (item?.kind === "item") {
+      rememberSelected(index)
+      startAction(item.item.id)
+    }
   }
 
   useTuiInput((input, key) => {

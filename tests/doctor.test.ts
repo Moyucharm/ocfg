@@ -32,6 +32,18 @@ describe("doctor", () => {
     expect(diagnostics.some((diagnostic) => diagnostic.message.includes('missing model "p/missing"'))).toBe(true)
   })
 
+  test("can report doctor diagnostics in Chinese", () => {
+    const diagnostics = runDoctor(
+      doc({
+        model: "p/missing",
+        provider: { p: { models: { other: {} } } },
+      }),
+      { language: "zh-CN" },
+    )
+
+    expect(diagnostics.some((diagnostic) => diagnostic.message.includes('缺失的模型 "p/missing"'))).toBe(true)
+  })
+
   test("warns on plaintext api keys", () => {
     const diagnostics = runDoctor(
       doc({

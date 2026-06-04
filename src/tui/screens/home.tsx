@@ -1,7 +1,8 @@
-import React, { useState } from "react"
+import React from "react"
 import { Box, Text } from "ink"
 import { useTuiText, type TuiLanguage } from "../i18n.js"
 import { useTuiInput } from "../input.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import { useOpenCodeMenuInput } from "../menu-input.js"
 import { useTuiTheme } from "../theme.js"
 import type { TuiAction, TuiConfigSelection } from "../types.js"
@@ -43,7 +44,6 @@ export function HomeScreen(props: {
   onQuit: () => void
 }) {
   const t = useTuiText()
-  const [selected, setSelected] = useState(0)
   const groups: OpenCodeMenuGroup[] = [
     {
       title: t("home.group.commands"),
@@ -52,17 +52,20 @@ export function HomeScreen(props: {
         { id: "add-provider", label: t("home.connectProvider") },
         { id: "manage-plugins", label: t("home.managePlugins") },
         { id: "manage-prompts", label: t("home.managePrompts") },
-        { id: "doctor", label: t("home.doctor") },
         { id: "set-default-model", label: t("home.setDefaultModel") },
         { id: "tools", label: t("home.tools") },
         { id: "switch-config", label: t("home.switchConfig") },
       ],
     },
   ]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({ memoryKey: "home", groups })
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
-    if (item?.kind === "item") props.onAction(item.item.id as TuiAction)
+    if (item?.kind === "item") {
+      rememberSelected(index)
+      props.onAction(item.item.id as TuiAction)
+    }
   }
 
   useTuiInput((_input, key) => {

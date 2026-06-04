@@ -7,6 +7,7 @@ import { listPlugins, type PluginListItem } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
@@ -21,7 +22,6 @@ export function PluginListScreen(props: {
   const t = useTuiText()
   const [plugins, setPlugins] = useState<PluginListItem[]>([])
   const [localPlugins, setLocalPlugins] = useState<LocalPluginItem[]>([])
-  const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
@@ -54,6 +54,11 @@ export function PluginListScreen(props: {
       })),
     },
   ]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({
+    memoryKey: `plugin-list:${props.selection.target?.path ?? props.selection.scope}`,
+    groups,
+    ready: !loading && !error,
+  })
 
   function selectedItem(index = selected) {
     return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -76,6 +81,7 @@ export function PluginListScreen(props: {
   function runSelected(index = selected) {
     const item = selectedItem(index)
     if (item?.kind !== "item") return
+    rememberSelected(index)
     if (item.item.id === "__install_npm") {
       props.onInstallNpmPlugin()
       return

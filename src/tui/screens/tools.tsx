@@ -4,6 +4,7 @@ import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
 import { isExaSearchEnabled } from "../../core/search-toggle.js"
 import { useTuiText } from "../i18n.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import { useOpenCodeMenuInput } from "../menu-input.js"
 import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
@@ -11,11 +12,11 @@ import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGro
 export function ToolsScreen(props: {
   selection: TuiConfigSelection
   refreshKey: number
+  onDoctor: () => void
   onToggleExaSearch: (enabled: boolean) => void
   onBack: () => void
 }) {
   const t = useTuiText()
-  const [selected, setSelected] = useState(0)
   const [enabled, setEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
@@ -23,20 +24,38 @@ export function ToolsScreen(props: {
 
   const groups: OpenCodeMenuGroup[] = [{
     title: t("tools.group"),
-    items: [{
-      id: "exa-search",
-      label: t("tools.exaSearch"),
-      description: targetPath,
-      detail: t("tools.exaSearchDetail"),
-      meta: t(enabled ? "tools.enabled" : "tools.disabled"),
-      tone: enabled ? "success" : "danger",
-    }],
+    items: [
+      {
+        id: "doctor",
+        label: t("tools.doctor"),
+        description: targetPath,
+        detail: t("tools.doctorDetail"),
+      },
+      {
+        id: "exa-search",
+        label: t("tools.exaSearch"),
+        description: targetPath,
+        detail: t("tools.exaSearchDetail"),
+        meta: t(enabled ? "tools.enabled" : "tools.disabled"),
+        tone: enabled ? "success" : "danger",
+      },
+    ],
   }]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({
+    memoryKey: `tools:${props.selection.target?.path ?? props.selection.scope}`,
+    groups,
+    ready: !loading && !error,
+  })
 
   function selectIndex(index = selected) {
     if (loading || error) return
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
+    rememberSelected(index)
+    if (item.item.id === "doctor") {
+      props.onDoctor()
+      return
+    }
     props.onToggleExaSearch(enabled)
   }
 
@@ -70,5 +89,5 @@ export function ToolsScreen(props: {
   if (loading) return showLoading ? <Text>{t("tools.loading")}</Text> : null
   if (error) return <Text color="red">{t("tools.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={t("tools.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.toggle")}\tenter`]} />
+  return <OpenCodeMenu title={t("tools.title")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.back")}\tesc`, `${t("common.select")}\tenter`]} />
 }

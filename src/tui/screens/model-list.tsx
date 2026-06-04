@@ -6,6 +6,7 @@ import { readConfig } from "../../core/config-reader.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
@@ -19,7 +20,6 @@ export function ModelListScreen(props: {
 }) {
   const t = useTuiText()
   const [models, setModels] = useState<Array<{ id: string; name?: string }>>([])
-  const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
@@ -31,6 +31,12 @@ export function ModelListScreen(props: {
       ...models.map((model) => ({ id: model.id, label: model.id, description: model.name })),
     ],
   }]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({
+    memoryKey: `model-list:${props.selection.target?.path ?? props.selection.scope}:${props.providerID}`,
+    groups,
+    initialSelected: models.length > 0 ? 1 : 0,
+    ready: !loading && !error,
+  })
 
   function selectedItem(index = selected) {
     return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -39,6 +45,7 @@ export function ModelListScreen(props: {
   function runSelected(index = selected) {
     const item = selectedItem(index)
     if (item?.kind !== "item") return
+    rememberSelected(index)
     if (item.item.id === "__add") props.onAddModel()
     else props.onSelectModel(item.item.id)
   }
@@ -56,7 +63,10 @@ export function ModelListScreen(props: {
     }
     if (matchesKeybind("delete", input, key, keybinds)) {
       const item = selectedItem()
-      if (item?.kind === "item" && item.item.id !== "__add") props.onDeleteModel(item.item.id)
+      if (item?.kind === "item" && item.item.id !== "__add") {
+        rememberSelected()
+        props.onDeleteModel(item.item.id)
+      }
       return
     }
     if (matchesKeybind("up", input, key, keybinds)) setSelected((current) => (current === 0 ? Math.max(0, count - 1) : current - 1))

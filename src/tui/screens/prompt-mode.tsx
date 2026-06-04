@@ -1,5 +1,6 @@
-import React, { useState } from "react"
+import React from "react"
 import { useTuiText } from "../i18n.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import { useOpenCodeMenuInput } from "../menu-input.js"
 import type { PromptListMode } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, type OpenCodeMenuGroup } from "../ui.js"
@@ -9,7 +10,6 @@ export function PromptModeScreen(props: {
   onBack: () => void
 }) {
   const t = useTuiText()
-  const [selected, setSelected] = useState(0)
   const groups: OpenCodeMenuGroup[] = [{
     title: t("prompt.actions"),
     items: [
@@ -18,10 +18,14 @@ export function PromptModeScreen(props: {
       { id: "agent-prompt", label: t("prompt.mode.agentPrompts"), detail: t("prompt.mode.agentPromptsDetail") },
     ],
   }]
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({ memoryKey: "prompt-mode", groups })
 
   function runSelected(index = selected) {
     const item = openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
-    if (item?.kind === "item") props.onSelect(item.item.id as PromptListMode)
+    if (item?.kind === "item") {
+      rememberSelected(index)
+      props.onSelect(item.item.id as PromptListMode)
+    }
   }
 
   useOpenCodeMenuInput({ groups, selected, setSelected, onSelect: runSelected, onBack: props.onBack })

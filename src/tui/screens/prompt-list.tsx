@@ -17,6 +17,7 @@ import {
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import type { PromptListMode, TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
@@ -38,7 +39,6 @@ export function PromptListScreen(props: {
   const [ruleProfiles, setRuleProfiles] = useState<RuleProfile[]>([])
   const [instructions, setInstructions] = useState<ConfigInstructionItem[]>([])
   const [prompts, setPrompts] = useState<PromptFile[]>([])
-  const [selected, setSelected] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
@@ -127,6 +127,11 @@ export function PromptListScreen(props: {
     },
   ]
   const groups = props.mode === "rules" ? ruleGroups : props.mode === "instructions" ? instructionGroups : agentPromptGroups
+  const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({
+    memoryKey: `prompt-list:${props.mode}:${props.selection.target?.path ?? props.selection.scope}`,
+    groups,
+    ready: !loading && !error,
+  })
 
   function selectedItem(index = selected) {
     return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -135,6 +140,7 @@ export function PromptListScreen(props: {
   function runSelected(index = selected) {
     const item = selectedItem(index)
     if (item?.kind !== "item") return
+    rememberSelected(index)
     if (item.item.id === "__add") {
       props.onAddPrompt()
       return

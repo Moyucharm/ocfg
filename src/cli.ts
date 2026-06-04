@@ -63,6 +63,11 @@ async function runAction(action: () => Promise<unknown>) {
   }
 }
 
+async function openTui() {
+  const [{ render }, React, { App }] = await Promise.all([import("ink"), import("react"), import("./tui/app.js")])
+  render(React.createElement(App))
+}
+
 function collect(value: string, previous: string[]) {
   previous.push(value)
   return previous
@@ -72,6 +77,9 @@ program
   .name("ocfg")
   .description("OpenCode configuration editor.")
   .version("0.1.0")
+  .action(async () => {
+    await runAction(openTui)
+  })
 
 addConfigOptions(program.command("doctor").description("Inspect OpenCode config for common provider risks."))
   .action(async (options) => {
@@ -263,10 +271,7 @@ addConfigOptions(list.command("prompts").description("List OpenCode rules, instr
   })
 
 program.command("tui").description("Open the interactive terminal UI.").action(async () => {
-  await runAction(async () => {
-    const [{ render }, React, { App }] = await Promise.all([import("ink"), import("react"), import("./tui/app.js")])
-    render(React.createElement(App))
-  })
+  await runAction(openTui)
 })
 
 program.parseAsync(process.argv)

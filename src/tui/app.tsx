@@ -68,6 +68,7 @@ import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import { TuiKeybindProvider } from "./keybinds.js"
+import { TuiMenuMemoryProvider } from "./menu-memory.js"
 import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference } from "./preferences.js"
 import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeBusyDialog, OpenCodeFrame, OpenCodeNotice } from "./ui.js"
@@ -163,7 +164,6 @@ export function App() {
 
   function handleHomeAction(action: TuiAction) {
     setMessage(undefined)
-    if (action === "doctor") navigate("doctor")
     if (action === "switch-config") navigate("select-config")
     if (action === "manage-plugins") navigate("plugin-list")
     if (action === "manage-prompts") navigate("prompt-mode")
@@ -940,7 +940,8 @@ export function App() {
     <TuiThemeProvider themeName={tuiPreferences.theme}>
       <TuiI18nProvider language={tuiPreferences.language}>
         <TuiKeybindProvider keybinds={tuiPreferences.keybinds}>
-          <OpenCodeFrame>
+          <TuiMenuMemoryProvider>
+            <OpenCodeFrame>
             <Box flexDirection="column">
               {busyMessage ? <OpenCodeBusyDialog message={busyMessage} /> : (
                 <>
@@ -958,7 +959,7 @@ export function App() {
               />
             ) : null}
             {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
-            {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onBack={() => goBack()} /> : null}
+            {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onDoctor={() => navigate("doctor")} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onBack={() => goBack()} /> : null}
             {route === "tools-result" && toolsResult ? <ToolsResultScreen result={toolsResult} onClose={closeToolsResult} /> : null}
             {route === "provider-list" ? (
               <ProviderListScreen
@@ -1150,7 +1151,8 @@ export function App() {
                 </>
               )}
             </Box>
-          </OpenCodeFrame>
+            </OpenCodeFrame>
+          </TuiMenuMemoryProvider>
         </TuiKeybindProvider>
       </TuiI18nProvider>
     </TuiThemeProvider>

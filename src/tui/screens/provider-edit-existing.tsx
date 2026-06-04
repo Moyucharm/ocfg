@@ -6,6 +6,7 @@ import type { EndpointKind } from "../../core/types.js"
 import { useTuiText } from "../i18n.js"
 import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
+import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
 import type { ExistingProviderEditDraft } from "../provider-edit-existing.js"
 import { tryInferEndpointKindFromProvider } from "../provider-metadata.js"
 import { maskSecret, OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -36,7 +37,7 @@ export function ProviderEditExistingScreen(props: {
   const inferredKind = tryInferEndpointKindFromProvider(props.provider)
   const defaultKindIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === inferredKind.kind))
   const [mode, setMode] = useState<Mode>("menu")
-  const [selected, setSelected] = useState(0)
+  const [selectSelected, setSelectSelected] = useState(0)
   const [channelTypeIndex, setChannelTypeIndex] = useState(defaultKindIndex)
   const [draft, setDraft] = useState<ExistingProviderEditDraft>({})
   const [inputValue, setInputValue] = useState(() => editableTextInput())
@@ -65,6 +66,9 @@ export function ProviderEditExistingScreen(props: {
       { id: "delete", label: t("provider.title.delete"), danger: true },
     ],
   }]
+  const menuSelection = useRememberedOpenCodeMenuSelection({ memoryKey: `provider-edit-existing:${props.providerID}`, groups: menuGroups })
+  const selected = mode === "menu" ? menuSelection.selected : selectSelected
+  const setSelected = mode === "menu" ? menuSelection.setSelected : setSelectSelected
 
   const selectGroups: OpenCodeMenuGroup[] = mode === "channel-type"
     ? [{ title: t("provider.channelType"), items: channelTypeOptions.map((option) => ({ id: option.kind, label: option.label })) }]
@@ -82,12 +86,12 @@ export function ProviderEditExistingScreen(props: {
     if (field === "channel-type") {
       setChannelTypeIndex(Math.max(0, channelTypeOptions.findIndex((option) => option.kind === (draft.endpointKind ?? inferredKind.kind ?? channelTypeOptions[0]!.kind))))
       setMode("channel-type")
-      setSelected(0)
+      setSelectSelected(0)
       return
     }
     if (field === "cache") {
       setMode("cache")
-      setSelected((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
+      setSelectSelected((draft.setCacheKey ?? cacheValue(props.provider)) ? 1 : 0)
       return
     }
     if (field === "name") setInputValue(editableTextInput(draft.name ?? currentName))
@@ -110,7 +114,10 @@ export function ProviderEditExistingScreen(props: {
 
   function runMenuIndex(index = selected) {
     const item = openCodeMenuRows(menuGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
-    if (item?.kind === "item") startField(item.item.id as Field)
+    if (item?.kind === "item") {
+      menuSelection.rememberSelected(index)
+      startField(item.item.id as Field)
+    }
   }
 
   function menuIndexForField(field: "channel-type" | "cache") {
@@ -125,7 +132,7 @@ export function ProviderEditExistingScreen(props: {
     if (mode === "cache") setDraft((current) => ({ ...current, setCacheKey: item.item.id === "true" }))
     const returnIndex = mode === "channel-type" || mode === "cache" ? menuIndexForField(mode) : 0
     setMode("menu")
-    setSelected(returnIndex)
+    menuSelection.setSelected(returnIndex)
   }
 
   useTuiInput((input, key) => {

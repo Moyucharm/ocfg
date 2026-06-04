@@ -44,7 +44,6 @@ export type DeleteTargetState =
     }
 
 export type TuiAction =
-  | "doctor"
   | "add-provider"
   | "edit-provider"
   | "manage-plugins"
