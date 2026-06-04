@@ -53,6 +53,7 @@ import { PromptAddScreen } from "./screens/prompt-add.js"
 import { PromptEditScreen, type PromptEditState } from "./screens/prompt-edit.js"
 import { PromptModeScreen } from "./screens/prompt-mode.js"
 import { PromptListScreen } from "./screens/prompt-list.js"
+import { InstructionAddScreen } from "./screens/instruction-add.js"
 import { ModelListScreen } from "./screens/model-list.js"
 import { ModelEditExistingScreen } from "./screens/model-edit-existing.js"
 import { ModelEditScreen } from "./screens/model-edit.js"
@@ -822,6 +823,24 @@ export function App() {
     }
   }
 
+  async function reviewInstructionAdd(ref: string) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = addInstructionRef(document.data, ref)
+      const nextText = promptConfigText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "instruction-add", "prompt-list")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "instruction-add")
+    }
+  }
+
   async function beginProviderDelete(providerID: string) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
@@ -1014,6 +1033,7 @@ export function App() {
                   setPromptAddKind("rule-profile")
                   navigate("prompt-add")
                 }}
+                onAddInstruction={() => navigate("instruction-add")}
                 onSelectRule={(rule) => void openRuleFile(rule)}
                 onSelectRuleProfile={(profile) => void openRuleProfile(profile)}
                 onSelectInstruction={(instruction) => void openInstructionFile(instruction)}
@@ -1026,6 +1046,12 @@ export function App() {
               <PromptAddScreen
                 kind={promptAddKind}
                 onSave={(fileName, content) => void (promptAddKind === "rule-profile" ? saveRuleProfileContent(fileName, content) : savePromptContent(fileName, content))}
+                onBack={() => goBack()}
+              />
+            ) : null}
+            {route === "instruction-add" ? (
+              <InstructionAddScreen
+                onSave={(ref) => void reviewInstructionAdd(ref)}
                 onBack={() => goBack()}
               />
             ) : null}

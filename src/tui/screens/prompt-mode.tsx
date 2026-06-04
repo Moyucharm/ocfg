@@ -14,6 +14,7 @@ export function PromptModeScreen(props: {
     title: t("prompt.actions"),
     items: [
       { id: "rules", label: t("prompt.mode.rules"), detail: t("prompt.mode.rulesDetail") },
+      { id: "instructions", label: t("prompt.mode.instructions"), detail: t("prompt.mode.instructionsDetail") },
       { id: "agent-prompt", label: t("prompt.mode.agentPrompts"), detail: t("prompt.mode.agentPromptsDetail") },
     ],
   }]

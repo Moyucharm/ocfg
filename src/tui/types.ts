@@ -16,6 +16,7 @@ export type TuiRoute =
   | "prompt-mode"
   | "prompt-list"
   | "prompt-add"
+  | "instruction-add"
   | "prompt-edit"
   | "model-list"
   | "model-add"
@@ -57,7 +58,7 @@ export type TuiConfigSelection = {
   target?: ConfigTarget
 }
 
-export type PromptListMode = "rules" | "agent-prompt"
+export type PromptListMode = "rules" | "instructions" | "agent-prompt"
 
 export type DiffReviewState = {
   targetPath: string

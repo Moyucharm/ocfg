@@ -25,6 +25,7 @@ export function PromptListScreen(props: {
   mode: PromptListMode
   onAddPrompt: () => void
   onAddRuleProfile: () => void
+  onAddInstruction: () => void
   onSelectRule: (rule: RuleFile) => void
   onSelectRuleProfile: (profile: RuleProfile) => void
   onSelectInstruction: (instruction: ConfigInstructionItem) => void
@@ -41,6 +42,10 @@ export function PromptListScreen(props: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
+  const targetLabel = t(props.selection.scope === "global" ? "config.global" : "config.projectLevel")
+  const footerRight = props.mode === "rules" || props.mode === "instructions"
+    ? <Text>{t("prompt.currentTarget", { target: targetLabel })}</Text>
+    : undefined
 
   const installedTemplateNames = new Set(prompts.map((prompt) => prompt.fileName))
   const ruleGroups: OpenCodeMenuGroup[] = [
@@ -71,6 +76,14 @@ export function PromptListScreen(props: {
         tone: profile.active ? "success" : undefined,
         detail: profile.description ?? profile.path,
       })),
+    },
+  ]
+  const instructionGroups: OpenCodeMenuGroup[] = [
+    {
+      title: t("prompt.actions"),
+      items: [
+        { id: "__add_instruction", label: t("prompt.addInstruction"), detail: t("prompt.instructionsHelp") },
+      ],
     },
     {
       title: t("prompt.configInstructions"),
@@ -113,7 +126,7 @@ export function PromptListScreen(props: {
       })),
     },
   ]
-  const groups = props.mode === "rules" ? ruleGroups : agentPromptGroups
+  const groups = props.mode === "rules" ? ruleGroups : props.mode === "instructions" ? instructionGroups : agentPromptGroups
 
   function selectedItem(index = selected) {
     return openCodeMenuRows(groups, "").find((row) => row.kind === "item" && row.itemIndex === index)
@@ -128,6 +141,10 @@ export function PromptListScreen(props: {
     }
     if (item.item.id === "__add_rule_profile") {
       props.onAddRuleProfile()
+      return
+    }
+    if (item.item.id === "__add_instruction") {
+      props.onAddInstruction()
       return
     }
     if (item.item.id.startsWith("rule:")) {
@@ -192,7 +209,9 @@ export function PromptListScreen(props: {
         setInstructions(nextInstructions)
         setPrompts(nextPrompts)
         const itemCount = props.mode === "rules"
-          ? 1 + nextRules.length + nextRuleProfiles.length + nextInstructions.length
+          ? 1 + nextRules.length + nextRuleProfiles.length
+          : props.mode === "instructions"
+            ? 1 + nextInstructions.length
           : 1 + nextPrompts.length + defaultPromptTemplates.length
         setSelected((current) => Math.min(current, Math.max(0, itemCount - 1)))
       } catch (caught) {
@@ -212,5 +231,6 @@ export function PromptListScreen(props: {
   if (loading) return showLoading ? <Text>{t("prompt.loading")}</Text> : null
   if (error) return <Text color="red">{t("prompt.failed", { message: error })}</Text>
 
-  return <OpenCodeMenu title={t(props.mode === "rules" ? "prompt.mode.rules" : "prompt.mode.agentPrompts")} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} />
+  const titleKey = props.mode === "rules" ? "prompt.mode.rules" : props.mode === "instructions" ? "prompt.mode.instructions" : "prompt.mode.agentPrompts"
+  return <OpenCodeMenu title={t(titleKey)} query="" rows={openCodeMenuRows(groups, "")} selectedIndex={selected} footer={[`${t("common.open")}\tenter`, `${t("common.back")}\tesc`]} footerRight={footerRight} />
 }

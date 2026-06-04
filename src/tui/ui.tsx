@@ -449,7 +449,7 @@ export function OpenCodeMenu(props: {
         <>
           <Text> </Text>
           <Box paddingX={5}>
-            <Text color={theme.colors.muted} wrap="truncate">{selectedDetail}</Text>
+            <Text color={theme.colors.muted} wrap="wrap">{selectedDetail}</Text>
           </Box>
         </>
       ) : null}

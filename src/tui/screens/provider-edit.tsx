@@ -4,7 +4,7 @@ import type { SecretRef } from "../../core/types.js"
 import { defaultSecretFilePath } from "../../core/secret-file.js"
 import { getEndpointTemplate } from "../../templates/index.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import type { ProviderFlowDraft } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, OpenCodePrompt, type OpenCodeMenuGroup } from "../ui.js"
@@ -19,7 +19,6 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
   const t = useTuiText()
   const [step, setStep] = useState<Step>("endpoint")
   const [selected, setSelected] = useState(0)
-  const [query, setQuery] = useState(() => editableTextInput())
   const [endpointIndex, setEndpointIndex] = useState(0)
   const [providerID, setProviderID] = useState("")
   const [name, setName] = useState("")
@@ -83,12 +82,11 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       setApiKeyValue(inputValue.value)
       setStep("cache")
       setSelected(0)
-      setQuery(editableTextInput())
     }
   }
 
   function runSelect(index = selected) {
-    const item = openCodeMenuRows(selectGroups, query.value).find((row) => row.kind === "item" && row.itemIndex === index)
+    const item = openCodeMenuRows(selectGroups, "").find((row) => row.kind === "item" && row.itemIndex === index)
     if (item?.kind !== "item") return
     if (step === "endpoint") {
       const nextIndex = Math.max(0, channelTypeOptions.findIndex((option) => option.kind === item.item.id))
@@ -114,28 +112,10 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
       return
     }
 
-    const rows = openCodeMenuRows(selectGroups, query.value)
+    const rows = openCodeMenuRows(selectGroups, "")
     const count = rows.filter((row) => row.kind === "item").length
     if (matchesKeybind("quit", input, key, keybinds) || matchesKeybind("back", input, key, keybinds)) {
       props.onBack()
-      return
-    }
-    if (matchesKeybind("left", input, key, keybinds)) {
-      setQuery((current) => moveEditableTextInput(current, "left"))
-      return
-    }
-    if (matchesKeybind("right", input, key, keybinds)) {
-      setQuery((current) => moveEditableTextInput(current, "right"))
-      return
-    }
-    if (isBackwardDeleteInput(input, key)) {
-      setQuery(deleteEditableTextInputBackward)
-      setSelected(0)
-      return
-    }
-    if (isForwardDeleteInput(input, key)) {
-      setQuery(deleteEditableTextInputForward)
-      setSelected(0)
       return
     }
     if (matchesKeybind("up", input, key, keybinds)) {
@@ -149,10 +129,6 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
     if (matchesKeybind("confirm", input, key, keybinds)) {
       runSelect()
       return
-    }
-    if (printableInput(input)) {
-      setQuery((current) => insertEditableTextInput(current, input))
-      setSelected(0)
     }
   })
 
@@ -171,5 +147,5 @@ export function ProviderEditScreen(props: { onComplete: (draft: ProviderFlowDraf
     )
   }
 
-  return <OpenCodeMenu title={step === "endpoint" ? t("provider.title.connect") : t("provider.cacheKey")} query={query.value} queryCursor={query.cursor} rows={openCodeMenuRows(selectGroups, query.value)} selectedIndex={selected} showSearch footer={[`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]} />
+  return <OpenCodeMenu title={step === "endpoint" ? t("provider.title.connect") : t("provider.cacheKey")} query="" rows={openCodeMenuRows(selectGroups, "")} selectedIndex={selected} footer={[`${t("common.cancel")}\tesc`, `${t("common.select")}\tenter`]} />
 }
