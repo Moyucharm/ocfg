@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { Box, useApp } from "ink"
+import { applyCompactionSettings, applyCompactionText, type CompactionSettings } from "../core/compaction.js"
+import { applyPermissionEdit, applyPermissionText, type PermissionEdit } from "../core/permission-control.js"
 import { createConfigDiff } from "../core/diff.js"
 import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
@@ -60,6 +62,8 @@ import { ModelEditScreen } from "./screens/model-edit.js"
 import { ModelAddScreen } from "./screens/model-add.js"
 import { DeleteConfirmScreen } from "./screens/delete-confirm.js"
 import { DefaultModelScreen } from "./screens/default-model.js"
+import { CompactionScreen } from "./screens/compaction.js"
+import { PermissionsScreen } from "./screens/permissions.js"
 import { ToolsScreen } from "./screens/tools.js"
 import { ToolsResultScreen } from "./screens/tools-result.js"
 import { nextTuiLanguage, TuiI18nProvider, translate, type TuiLanguage } from "./i18n.js"
@@ -932,6 +936,43 @@ export function App() {
     }
   }
 
+  async function reviewCompaction(settings: CompactionSettings) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = applyCompactionSettings(document.data, settings)
+      const nextText = applyCompactionText(document, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "compaction", "tools")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "compaction")
+    }
+  }
+
+  async function reviewPermissionEdit(edit: PermissionEdit) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = applyPermissionEdit(document.data, edit)
+      if (sameJSON(document.data, nextConfig)) throw new Error(translate(tuiPreferences.language, "permission.noChanges"))
+      const nextText = applyPermissionText(document, edit, nextConfig)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+      }, "permissions", "tools")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "permissions")
+    }
+  }
+
   async function confirmWrite() {
     setDiffReview(await withSaving(() => commitPreparedWrite(diffReview)))
   }
@@ -959,8 +1000,10 @@ export function App() {
               />
             ) : null}
             {route === "doctor" ? <DoctorScreen selection={config} onBack={() => goBack()} /> : null}
-            {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onDoctor={() => navigate("doctor")} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onBack={() => goBack()} /> : null}
+            {route === "tools" ? <ToolsScreen selection={config} refreshKey={toolsRefreshKey} onDoctor={() => navigate("doctor")} onToggleExaSearch={(enabled) => void toggleExaSearch(enabled)} onConfigureCompaction={() => navigate("compaction")} onConfigurePermissions={() => navigate("permissions")} onBack={() => goBack()} /> : null}
             {route === "tools-result" && toolsResult ? <ToolsResultScreen result={toolsResult} onClose={closeToolsResult} /> : null}
+            {route === "compaction" ? <CompactionScreen selection={config} onReview={(settings) => void reviewCompaction(settings)} onBack={() => goBack("tools")} /> : null}
+            {route === "permissions" ? <PermissionsScreen selection={config} onReview={(edit) => void reviewPermissionEdit(edit)} onBack={() => goBack("tools")} /> : null}
             {route === "provider-list" ? (
               <ProviderListScreen
                 selection={config}

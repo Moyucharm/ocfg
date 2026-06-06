@@ -13,6 +13,7 @@ describe("TUI keybind helpers", () => {
     expect(matchesKeybind("up", "", { upArrow: true })).toBe(true)
     expect(matchesKeybind("confirm", "", { return: true })).toBe(true)
     expect(matchesKeybind("cancel", "q", { ctrl: true })).toBe(true)
+    expect(matchesKeybind("restore", "r", {})).toBe(true)
   })
 
   test("applies validated user overrides without losing defaults", () => {

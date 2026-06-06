@@ -23,10 +23,12 @@ export type TuiRoute =
   | "model-edit-existing"
   | "delete-confirm"
   | "default-model"
+  | "compaction"
   | "model-edit"
   | "tools"
   | "tools-result"
   | "diff-review"
+  | "permissions"
 
 export type DeleteTargetState =
   | {

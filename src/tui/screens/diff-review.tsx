@@ -201,7 +201,7 @@ export function DiffReviewScreen(props: {
         <OpenCodeActionLine key={action.id} item={action} selected={index === selected} />
       ))}
       <Text> </Text>
-      <Footer items={maxDiffOffset > 0 ? [`${t("common.select")}\tenter`, `${t("common.scroll")}\tup/down`, `${t("common.cancel")}\tesc`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]} />
+      <Footer items={maxDiffOffset > 0 ? [`${t("common.select")}\tenter`, `${t("common.scroll")}\tup/down`, `${t("diff.actions")}\tleft/right`, `${t("common.cancel")}\tesc`] : [`${t("common.select")}\tenter`, `${t("common.cancel")}\tesc`]} />
     </Box>
   )
 }

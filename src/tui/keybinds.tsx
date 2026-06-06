@@ -15,6 +15,7 @@ export type TuiKeybindAction =
   | "manual"
   | "retry"
   | "delete"
+  | "restore"
   | "save"
   | "diff"
 
@@ -47,6 +48,7 @@ export const defaultTuiKeybinds: TuiKeybindMap = {
   manual: ["m"],
   retry: ["r"],
   delete: ["d"],
+  restore: ["r"],
   save: ["y"],
   diff: ["d"],
 }
