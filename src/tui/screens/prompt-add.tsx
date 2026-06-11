@@ -1,9 +1,9 @@
 import React, { useState } from "react"
 import { normalizePromptFileName } from "../../core/prompt-manager.js"
 import { useTuiText } from "../i18n.js"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, useTuiInput } from "../input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, insertMultilineTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
-import { cursorAtEnd, deleteBackward, deleteForward, insertNewline, insertText, moveCursor, type TextCursor } from "../text-editor.js"
+import { insertNewline } from "../text-editor.js"
 import { OpenCodePrompt, OpenCodeTextArea } from "../ui.js"
 
 type Step = "name" | "content"
@@ -38,17 +38,17 @@ export function PromptAddScreen(props: {
   const kind = props.kind ?? "prompt"
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState(() => editableTextInput())
-  const [content, setContent] = useState("")
-  const [contentCursor, setContentCursor] = useState<TextCursor>(() => cursorAtEnd(""))
+  const [editor, setEditor] = useState(() => editableTextInput())
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
+  const content = editor.value
+  const contentCursor = editor.cursor
 
   function continueToContent() {
     try {
       const fileName = normalizePromptFileName(name.value)
       const nextContent = kind === "rule-profile" ? ruleProfileSkeleton(fileName) : skeleton(fileName)
-      setContent(nextContent)
-      setContentCursor(cursorAtEnd(nextContent))
+      setEditor(editableTextInput(nextContent))
       setError(undefined)
       setStep("content")
     } catch (caught) {
@@ -64,11 +64,6 @@ export function PromptAddScreen(props: {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     }
-  }
-
-  function applyContentEdit(result: { value: string; cursor: TextCursor }) {
-    setContent(result.value)
-    setContentCursor(result.cursor)
   }
 
   useTuiInput((input, key) => {
@@ -98,17 +93,16 @@ export function PromptAddScreen(props: {
       setError(undefined)
       return
     }
-    if (matchesKeybind("left", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "left"))
-    else if (matchesKeybind("right", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "right"))
-    else if (matchesKeybind("up", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "up"))
-    else if (matchesKeybind("down", input, key, keybinds)) setContentCursor((current) => moveCursor(content, current, "down"))
-    else if (isBackwardDeleteInput(input, key)) applyContentEdit(deleteBackward(content, contentCursor))
-    else if (isForwardDeleteInput(input, key)) applyContentEdit(deleteForward(content, contentCursor))
-    else if (matchesKeybind("confirm", input, key, keybinds)) applyContentEdit(insertNewline(content, contentCursor))
+    if (matchesKeybind("left", input, key, keybinds)) setEditor((current) => moveEditableTextInput(current, "left"))
+    else if (matchesKeybind("right", input, key, keybinds)) setEditor((current) => moveEditableTextInput(current, "right"))
+    else if (matchesKeybind("up", input, key, keybinds)) setEditor((current) => moveEditableTextInput(current, "up"))
+    else if (matchesKeybind("down", input, key, keybinds)) setEditor((current) => moveEditableTextInput(current, "down"))
+    else if (isBackwardDeleteInput(input, key)) setEditor(deleteEditableTextInputBackward)
+    else if (isForwardDeleteInput(input, key)) setEditor(deleteEditableTextInputForward)
+    else if (matchesKeybind("confirm", input, key, keybinds)) setEditor((current) => insertNewline(current.value, current.cursor))
     else {
       setError(undefined)
-      const printable = printableInput(input)
-      if (printable) applyContentEdit(insertText(content, contentCursor, printable))
+      setEditor((current) => insertMultilineTextInput(current, input))
     }
   })
 

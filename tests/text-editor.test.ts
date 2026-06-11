@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput } from "../src/tui/input.js"
+import { deleteEditableTextInputBackward, deleteEditableTextInputForward, editableTextInput, insertEditableTextInput, insertMultilineTextInput, isBackwardDeleteInput, isForwardDeleteInput, moveEditableTextInput, printableInput, printableMultilineInput } from "../src/tui/input.js"
 import { deleteBackward, deleteForward, insertNewline, insertText, moveCursor } from "../src/tui/text-editor.js"
 import { openCodeTextAreaRows, openCodeTextAreaViewport } from "../src/tui/ui.js"
 
@@ -43,6 +43,24 @@ describe("TUI text editor", () => {
     expect(inserted).toEqual({ value: "hello", cursor: { line: 0, column: 4 } })
     expect(deleteEditableTextInputBackward(inserted)).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
     expect(deleteEditableTextInputForward({ value: "hello", cursor: { line: 0, column: 3 } })).toEqual({ value: "helo", cursor: { line: 0, column: 3 } })
+  })
+
+  test("preserves line breaks only for multiline prompt input", () => {
+    expect(printableInput("one\ntwo\r\nthree")).toBe("onetwothree")
+    expect(printableMultilineInput("one\ntwo\r\nthree")).toBe("one\ntwo\nthree")
+    expect(printableMultilineInput("\x1B[200~one\ntwo\x1B[201~")).toBe("one\ntwo")
+  })
+
+  test("accumulates split multiline paste chunks", () => {
+    let input = editableTextInput("")
+    input = insertMultilineTextInput(input, "first chunk\n")
+    input = insertMultilineTextInput(input, "second chunk\n")
+    input = insertMultilineTextInput(input, "third chunk")
+
+    expect(input).toEqual({
+      value: "first chunk\nsecond chunk\nthird chunk",
+      cursor: { line: 2, column: 11 },
+    })
   })
 
   test("treats terminal DEL as backspace, not forward delete", () => {
