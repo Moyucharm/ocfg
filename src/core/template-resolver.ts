@@ -1,5 +1,6 @@
 import type { EndpointKind, ModelDraft } from "./types.js"
 import { lookupModelsDevModelBySuffix, modelsDevToModelDraft, type ModelsDevMatch, type ModelsDevOptions } from "./models-dev.js"
+import { mergeGeneratedVariants, variantsFromReasoningOptions } from "./reasoning-variants.js"
 
 export type ResolutionConfidence = "exact" | "generic" | "manual"
 
@@ -84,6 +85,10 @@ export async function resolveModelTemplate(input: {
   }
   if (modelsDevMatch) {
     const draft = modelsDevToModelDraft(modelsDevMatch.model)
+    draft.variants = mergeGeneratedVariants({
+      existing: draft.variants,
+      generated: variantsFromReasoningOptions({ endpointKind: input.endpointKind, providerID: modelsDevMatch.providerID, modelID: modelsDevMatch.modelID, model: modelsDevMatch.model }),
+    })
     model = mergeModel(model, draft)
     sources.push({
       type: "models.dev",

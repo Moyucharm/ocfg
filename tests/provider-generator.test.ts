@@ -408,6 +408,222 @@ describe("provider generator", () => {
     expect(result.modelResolutions["gpt-5.4"].sources.some((source) => source.type === "models.dev")).toBe(true)
   })
 
+  test("generates GLM effort variants from models.dev metadata", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "anthropic-compatible",
+      providerID: "zai",
+      name: "Z.AI",
+      apiKey: { type: "env", name: "ZAI_API_KEY" },
+      modelIDs: ["glm-5.2"],
+      modelsDev: {
+        data: {
+          zai: {
+            id: "zai",
+            name: "Z.AI",
+            models: {
+              "glm-5.2": {
+                id: "glm-5.2",
+                name: "GLM-5.2",
+                reasoning: true,
+                reasoning_options: [{ type: "effort", values: ["high", "max"] }],
+                tool_call: true,
+                interleaved: { field: "reasoning_content" },
+                limit: { context: 1000000, output: 131072 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["glm-5.2"]).toBe(false)
+    expect(result.provider.models["glm-5.2"].interleaved).toEqual({ field: "reasoning_content" })
+    expect(result.provider.models["glm-5.2"].variants?.high).toEqual({ thinking: { type: "enabled" } })
+    expect(result.provider.models["glm-5.2"].variants?.max).toEqual({ thinking: { type: "enabled" } })
+  })
+
+  test("generates GLM toggle variants from models.dev metadata", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "zai",
+      name: "Z.AI",
+      apiKey: { type: "env", name: "ZAI_API_KEY" },
+      modelIDs: ["glm-5.1"],
+      modelsDev: {
+        data: {
+          zai: {
+            id: "zai",
+            name: "Z.AI",
+            models: {
+              "glm-5.1": {
+                id: "glm-5.1",
+                name: "GLM-5.1",
+                reasoning: true,
+                reasoning_options: [{ type: "toggle" }],
+                tool_call: true,
+                interleaved: { field: "reasoning_content" },
+                limit: { context: 200000, output: 131072 },
+              },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.modelConfirmations["glm-5.1"]).toBe(false)
+    expect(result.provider.models["glm-5.1"].variants?.none).toEqual({ thinking: { type: "disabled" } })
+    expect(result.provider.models["glm-5.1"].variants?.thinking).toEqual({ thinking: { type: "enabled" } })
+  })
+
+  test("uses official reasoning metadata when earlier provider matches are weaker", async () => {
+    const result = await createProviderDraftFromEndpoint({
+      endpointKind: "openai-compatible",
+      providerID: "custom",
+      name: "Custom",
+      apiKey: { type: "env", name: "CUSTOM_API_KEY" },
+      modelIDs: [
+        "gpt-5.5",
+        "glm-5.2",
+        "gemini-3.5-flash",
+        "deepseek-v4-pro",
+        "claude-opus-4-8",
+        "kimi-k2.5",
+        "minimax-m3",
+        "mimo-v2.5-pro",
+        "gpt-5.4-mini",
+        "gemini-3.1-flash-lite-preview",
+        "gpt-5-chat",
+      ],
+      modelsDev: {
+        data: {
+          vercel: {
+            id: "vercel",
+            name: "Vercel",
+            models: {
+              "google/gemini-3.5-flash": { id: "google/gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, limit: { context: 1, output: 1 } },
+              "anthropic/claude-opus-4.8": { id: "anthropic/claude-opus-4.8", name: "Claude Opus 4.8", reasoning: true, limit: { context: 1, output: 1 } },
+              "minimax/minimax-m3": { id: "minimax/minimax-m3", name: "MiniMax M3", reasoning: true, limit: { context: 1, output: 1 } },
+              "xiaomi/mimo-v2.5-pro": { id: "xiaomi/mimo-v2.5-pro", name: "MiMo V2.5 Pro", reasoning: true, reasoning_options: [{ type: "toggle" }], limit: { context: 1, output: 1 } },
+            },
+          },
+          "alibaba-cn": {
+            id: "alibaba-cn",
+            name: "Alibaba China",
+            models: {
+              "deepseek-v4-pro": { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, limit: { context: 1, output: 1 } },
+            },
+          },
+          "qiniu-ai": {
+            id: "qiniu-ai",
+            name: "Qiniu AI",
+            models: {
+              "moonshotai/kimi-k2.5": { id: "moonshotai/kimi-k2.5", name: "Kimi K2.5", reasoning: false, limit: { context: 1, output: 1 } },
+            },
+          },
+          openai: {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              "gpt-5.5": { id: "gpt-5.5", name: "GPT-5.5", reasoning: true, reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh"] }], limit: { context: 1050000, input: 922000, output: 128000 } },
+              "gpt-5.4-mini": { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", reasoning: true, reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh"] }], limit: { context: 400000, input: 272000, output: 128000 } },
+            },
+          },
+          "zai-coding-plan": {
+            id: "zai-coding-plan",
+            name: "Z.AI Coding Plan",
+            models: {
+              "glm-5.2": { id: "glm-5.2", name: "GLM-5.2", reasoning: true, reasoning_options: [{ type: "effort", values: ["high", "max"] }], limit: { context: 1000000, output: 131072 } },
+            },
+          },
+          google: {
+            id: "google",
+            name: "Google",
+            models: {
+              "gemini-3.5-flash": { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, reasoning_options: [{ type: "effort", values: ["minimal", "low", "medium", "high"] }], limit: { context: 1000000, output: 65536 } },
+              "gemini-3.1-flash-lite-preview": { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview", reasoning: true, reasoning_options: [{ type: "effort", values: ["minimal", "low", "medium", "high"] }], limit: { context: 1000000, output: 65536 } },
+            },
+          },
+          deepseek: {
+            id: "deepseek",
+            name: "DeepSeek",
+            models: {
+              "deepseek-v4-pro": { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["high", "max"] }], limit: { context: 256000, output: 64000 } },
+            },
+          },
+          anthropic: {
+            id: "anthropic",
+            name: "Anthropic",
+            models: {
+              "claude-opus-4-8": { id: "claude-opus-4-8", name: "Claude Opus 4.8", reasoning: true, reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }], limit: { context: 200000, output: 64000 } },
+            },
+          },
+          moonshotai: {
+            id: "moonshotai",
+            name: "Moonshot AI",
+            models: {
+              "kimi-k2.5": { id: "kimi-k2.5", name: "Kimi K2.5", reasoning: true, reasoning_options: [{ type: "toggle" }], limit: { context: 262144, output: 262144 } },
+            },
+          },
+          minimax: {
+            id: "minimax",
+            name: "MiniMax",
+            models: {
+              "MiniMax-M3": { id: "MiniMax-M3", name: "MiniMax-M3", reasoning: true, reasoning_options: [{ type: "toggle" }], limit: { context: 1000000, output: 80000 } },
+            },
+          },
+          xiaomi: {
+            id: "xiaomi",
+            name: "Xiaomi",
+            models: {
+              "mimo-v2.5-pro": { id: "mimo-v2.5-pro", name: "MiMo-V2.5-Pro", reasoning: true, reasoning_options: [{ type: "toggle" }], limit: { context: 262144, output: 65536 } },
+            },
+          },
+          requesty: {
+            id: "requesty",
+            name: "Requesty",
+            models: {
+              "openai/gpt-5-chat": { id: "openai/gpt-5-chat", name: "GPT-5 Chat", reasoning: true, limit: { context: 400000, output: 16384 } },
+            },
+          },
+        } as any,
+      },
+    })
+
+    const sourceProvider = (modelID: string) => result.modelResolutions[modelID].sources.find((source) => source.type === "models.dev")?.providerID
+    expect(sourceProvider("gpt-5.5")).toBe("openai")
+    expect(Object.keys(result.provider.models["gpt-5.5"].variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
+    expect(result.provider.models["gpt-5.5"].variants?.xhigh).toEqual({ reasoningEffort: "xhigh" })
+    expect(sourceProvider("glm-5.2")).toBe("zai-coding-plan")
+    expect(Object.keys(result.provider.models["glm-5.2"].variants ?? {})).toEqual(["high", "max"])
+    expect(result.provider.models["glm-5.2"].variants?.high).toEqual({ thinking: { type: "enabled" } })
+    expect(sourceProvider("gemini-3.5-flash")).toBe("google")
+    expect(Object.keys(result.provider.models["gemini-3.5-flash"].variants ?? {})).toEqual(["minimal", "low", "medium", "high"])
+    expect(result.provider.models["gemini-3.5-flash"].variants?.high).toEqual({ thinkingConfig: { includeThoughts: true, thinkingLevel: "high" } })
+    expect(sourceProvider("deepseek-v4-pro")).toBe("deepseek")
+    expect(Object.keys(result.provider.models["deepseek-v4-pro"].variants ?? {})).toEqual(["none", "thinking", "high", "max"])
+    expect(result.provider.models["deepseek-v4-pro"].variants?.high).toEqual({ thinking: { type: "enabled" }, reasoning_effort: "high" })
+    expect(sourceProvider("claude-opus-4-8")).toBe("anthropic")
+    expect(Object.keys(result.provider.models["claude-opus-4-8"].variants ?? {})).toEqual(["low", "medium", "high", "xhigh", "max"])
+    expect(result.provider.models["claude-opus-4-8"].variants?.high).toEqual({ thinking: { type: "adaptive" }, effort: "high" })
+    expect(sourceProvider("kimi-k2.5")).toBe("moonshotai")
+    expect(Object.keys(result.provider.models["kimi-k2.5"].variants ?? {})).toEqual(["none", "thinking"])
+    expect(result.provider.models["kimi-k2.5"].variants?.thinking).toEqual({ thinking: { type: "enabled" } })
+    expect(sourceProvider("minimax-m3")).toBe("minimax")
+    expect(Object.keys(result.provider.models["minimax-m3"].variants ?? {})).toEqual(["none", "thinking"])
+    expect(result.provider.models["minimax-m3"].variants?.thinking).toEqual({ thinking: { type: "adaptive" } })
+    expect(sourceProvider("mimo-v2.5-pro")).toBe("xiaomi")
+    expect(Object.keys(result.provider.models["mimo-v2.5-pro"].variants ?? {})).toEqual(["none", "thinking"])
+    expect(result.provider.models["mimo-v2.5-pro"].variants?.thinking).toEqual({ thinking: { type: "enabled" } })
+    expect(sourceProvider("gpt-5.4-mini")).toBe("openai")
+    expect(Object.keys(result.provider.models["gpt-5.4-mini"].variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
+    expect(sourceProvider("gemini-3.1-flash-lite-preview")).toBe("google")
+    expect(Object.keys(result.provider.models["gemini-3.1-flash-lite-preview"].variants ?? {})).toEqual(["minimal", "low", "medium", "high"])
+    expect(result.provider.models["gemini-3.1-flash-lite-preview"].variants?.high).toEqual({ thinkingConfig: { includeThoughts: true, thinkingLevel: "high" } })
+    expect(sourceProvider("gpt-5-chat")).toBe("requesty")
+    expect(result.provider.models["gpt-5-chat"].variants).toBeUndefined()
+    for (const model of Object.values(result.provider.models)) expect(model.options).toBeUndefined()
+  })
+
   test.each(["gpt-5", "gpt-5.4-mini", "unknown-gpt-5.5"])("does not apply GPT-5 long context preset to %s", async (modelID) => {
     const result = await createProviderDraftFromEndpoint({
       endpointKind: "openai-compatible",

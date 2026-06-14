@@ -17,9 +17,11 @@ const data = {
         temperature: true,
         tool_call: true,
         attachment: true,
+        interleaved: { field: "reasoning_content" },
         limit: { context: 400000, output: 128000 },
         modalities: { input: ["text", "image"], output: ["text"] },
         headers: { "OpenAI-Beta": "test" },
+        reasoning_options: [{ type: "effort", values: ["low", "high"] }],
         variants: {
           low: { reasoningEffort: "low" },
           high: { reasoningEffort: "high" },
@@ -289,6 +291,114 @@ describe("models.dev", () => {
     expect(result.warnings).toEqual([])
   })
 
+  test("prefers official provider metadata with reasoning options over earlier weak matches", async () => {
+    const result = await lookupModelsDevModelBySuffix({
+      modelID: "gemini-3.5-flash",
+      options: {
+        data: {
+          vercel: {
+            id: "vercel",
+            name: "Vercel",
+            models: {
+              "google/gemini-3.5-flash": { id: "google/gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, limit: { context: 1, output: 1 } },
+            },
+          },
+          google: {
+            id: "google",
+            name: "Google",
+            models: {
+              "gemini-3.5-flash": { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, reasoning_options: [{ type: "effort", values: ["low", "high"] }], limit: { context: 2, output: 2 } },
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(result.match?.providerID).toBe("google")
+    expect(result.match?.modelID).toBe("gemini-3.5-flash")
+    expect(result.match?.model.reasoning_options).toEqual([{ type: "effort", values: ["low", "high"] }])
+  })
+
+  test("prefers official provider metadata for common model families", async () => {
+    for (const [modelID, weakProviderID, officialProviderID, officialModelID] of [
+      ["deepseek-v4-pro", "alibaba-cn", "deepseek", "deepseek-v4-pro"],
+      ["claude-opus-4-8", "vercel", "anthropic", "claude-opus-4-8"],
+      ["kimi-k2.5", "qiniu-ai", "moonshotai", "kimi-k2.5"],
+      ["minimax-m3", "vercel", "minimax", "MiniMax-M3"],
+      ["mimo-v2.5-pro", "vercel", "xiaomi", "mimo-v2.5-pro"],
+    ] as const) {
+      const result = await lookupModelsDevModelBySuffix({
+        modelID,
+        options: {
+          data: {
+            [weakProviderID]: {
+              id: weakProviderID,
+              name: weakProviderID,
+              models: {
+                [`${officialProviderID}/${officialModelID}`]: { id: `${officialProviderID}/${officialModelID}`, name: modelID, reasoning: true, limit: { context: 1, output: 1 } },
+              },
+            },
+            [officialProviderID]: {
+              id: officialProviderID,
+              name: officialProviderID,
+              models: {
+                [officialModelID]: { id: officialModelID, name: modelID, reasoning: true, reasoning_options: [{ type: "toggle" }], limit: { context: 2, output: 2 } },
+              },
+            },
+          } as any,
+        },
+      })
+
+      expect(result.match?.providerID).toBe(officialProviderID)
+      expect(result.match?.modelID).toBe(officialModelID)
+      expect(result.match?.model.reasoning_options).toEqual([{ type: "toggle" }])
+    }
+  })
+
+  test("falls back to non-official metadata with reasoning options", async () => {
+    const result = await lookupModelsDevModelBySuffix({
+      modelID: "custom-reasoner",
+      options: {
+        data: {
+          first: { id: "first", name: "First", models: { "custom-reasoner": { id: "custom-reasoner", name: "Custom Reasoner", reasoning: true, limit: { context: 1, output: 1 } } } },
+          second: { id: "second", name: "Second", models: { "custom-reasoner": { id: "custom-reasoner", name: "Custom Reasoner", reasoning: true, reasoning_options: [{ type: "effort", values: ["high"] }], limit: { context: 2, output: 2 } } } },
+        } as any,
+      },
+    })
+
+    expect(result.match?.providerID).toBe("second")
+    expect(result.match?.model.reasoning_options).toEqual([{ type: "effort", values: ["high"] }])
+  })
+
+  test("does not apply official provider priority to substring matches", async () => {
+    const result = await lookupModelsDevModelBySuffix({
+      modelID: "my-gemini-proxy",
+      options: {
+        data: {
+          custom: { id: "custom", name: "Custom", models: { "my-gemini-proxy": { id: "my-gemini-proxy", name: "My Gemini Proxy", reasoning: true, limit: { context: 1, output: 1 } } } },
+          google: { id: "google", name: "Google", models: { "my-gemini-proxy": { id: "my-gemini-proxy", name: "My Gemini Proxy", reasoning: true, limit: { context: 2, output: 2 } } } },
+        } as any,
+      },
+    })
+
+    expect(result.match?.providerID).toBe("custom")
+  })
+
+  test("uses official provider priority for namespaced model inputs", async () => {
+    const result = await lookupModelsDevModelBySuffix({
+      modelID: "google/gemini-3.5-flash",
+      options: {
+        data: {
+          vercel: { id: "vercel", name: "Vercel", models: { "google/gemini-3.5-flash": { id: "google/gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, limit: { context: 1, output: 1 } } } },
+          google: { id: "google", name: "Google", models: { "gemini-3.5-flash": { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", reasoning: true, reasoning_options: [{ type: "effort", values: ["high"] }], limit: { context: 2, output: 2 } } } },
+        } as any,
+      },
+    })
+
+    expect(result.match?.providerID).toBe("google")
+    expect(result.match?.modelID).toBe("gemini-3.5-flash")
+  })
+
   test("does not use provider IDs as metadata matching input", async () => {
     const match = await findModelsDevModelBySuffix({
       modelID: "gpt-5",
@@ -305,7 +415,9 @@ describe("models.dev", () => {
     expect(draft.limit?.context).toBe(400000)
     expect(draft.modalities?.input).toContain("image")
     expect(draft.headers?.["OpenAI-Beta"]).toBe("test")
+    expect(draft.interleaved).toEqual({ field: "reasoning_content" })
     expect(draft.variants?.low?.reasoningEffort).toBe("low")
     expect(Object.keys(draft)).not.toContain("vision")
+    expect(Object.keys(draft)).not.toContain("reasoning_options")
   })
 })

@@ -47,6 +47,28 @@ const modelsDevData = {
         limit: { context: 1050000, input: 922000, output: 128000 },
         modalities: { input: ["text", "image"], output: ["text"] },
       },
+      "glm-5.2": {
+        id: "glm-5.2",
+        name: "GLM-5.2 From Models.dev",
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["high", "max"] }],
+        tool_call: true,
+        temperature: true,
+        interleaved: { field: "reasoning_content" },
+        limit: { context: 1000000, output: 131072 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
+      "glm-5.1": {
+        id: "glm-5.1",
+        name: "GLM-5.1 From Models.dev",
+        reasoning: true,
+        reasoning_options: [{ type: "toggle" }],
+        tool_call: true,
+        temperature: true,
+        interleaved: { field: "reasoning_content" },
+        limit: { context: 200000, output: 131072 },
+        modalities: { input: ["text"], output: ["text"] },
+      },
     },
   },
 }
@@ -244,5 +266,44 @@ describe("template resolver", () => {
       modelsDev: { data: modelsDevData as any },
     })
     expect(Object.keys(result.model)).not.toContain("vision")
+  })
+
+  test("generates variants from reasoning effort metadata", async () => {
+    const result = await resolveModelTemplate({
+      endpointKind: "anthropic-compatible",
+      providerID: "zai",
+      modelID: "glm-5.2",
+      modelsDev: { data: modelsDevData as any },
+    })
+
+    expect(result.confidence).toBe("exact")
+    expect(result.model.interleaved).toEqual({ field: "reasoning_content" })
+    expect(result.model.variants?.high).toEqual({ thinking: { type: "enabled" } })
+    expect(result.model.variants?.max).toEqual({ thinking: { type: "enabled" } })
+  })
+
+  test("generates variants from reasoning toggle metadata", async () => {
+    const result = await resolveModelTemplate({
+      endpointKind: "openai-compatible",
+      providerID: "zai",
+      modelID: "glm-5.1",
+      modelsDev: { data: modelsDevData as any },
+    })
+
+    expect(result.confidence).toBe("exact")
+    expect(result.model.variants?.none).toEqual({ thinking: { type: "disabled" } })
+    expect(result.model.variants?.thinking).toEqual({ thinking: { type: "enabled" } })
+  })
+
+  test("does not overwrite variants already supplied by models.dev metadata", async () => {
+    const result = await resolveModelTemplate({
+      endpointKind: "openai-compatible",
+      providerID: "custom-openai",
+      modelID: "gpt-5",
+      modelsDev: { data: modelsDevData as any },
+    })
+
+    expect(result.model.variants?.low).toEqual({ reasoningEffort: "low" })
+    expect(result.model.variants?.high).toEqual({ reasoningEffort: "high" })
   })
 })
