@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander"
+import type { ComponentType } from "react"
 import type { ConfigScope } from "./core/types.js"
+import type { LoadedTuiPreferences } from "./tui/preferences.js"
 
 const program = new Command()
 
@@ -36,8 +38,14 @@ async function runAction(action: () => Promise<unknown>) {
 }
 
 async function openTui() {
-  const [{ render }, React, { App }] = await Promise.all([import("ink"), import("react"), import("./tui/app.js")])
-  render(React.createElement(App))
+  const [{ render }, React, { App }, initialPreferences] = await Promise.all([
+    import("ink"),
+    import("react"),
+    import("./tui/app.js"),
+    import("./tui/preferences.js").then((module) => module.loadTuiPreferences()),
+  ])
+  const AppComponent = App as ComponentType<{ initialPreferences: LoadedTuiPreferences }>
+  render(React.createElement(AppComponent, { initialPreferences }))
 }
 
 function collect(value: string, previous: string[]) {

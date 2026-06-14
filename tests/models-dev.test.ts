@@ -13,6 +13,8 @@ const data = {
       "gpt-5": {
         id: "gpt-5",
         name: "GPT-5",
+        family: "gpt-5",
+        release_date: "2026-01-01",
         reasoning: true,
         temperature: true,
         tool_call: true,
@@ -417,6 +419,8 @@ describe("models.dev", () => {
     expect(draft.headers?.["OpenAI-Beta"]).toBe("test")
     expect(draft.interleaved).toEqual({ field: "reasoning_content" })
     expect(draft.variants?.low?.reasoningEffort).toBe("low")
+    expect(Object.keys(draft)).not.toContain("family")
+    expect(Object.keys(draft)).not.toContain("release_date")
     expect(Object.keys(draft)).not.toContain("vision")
     expect(Object.keys(draft)).not.toContain("reasoning_options")
   })

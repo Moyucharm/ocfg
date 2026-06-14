@@ -10,7 +10,7 @@ import { defaultSecretFilePath, restoreSecretFile, snapshotSecretFile, writeSecr
 import { writeConfigSafely } from "../core/config-writer.js"
 import { enableExaSearchPermissions, OPENCODE_EXA_ENV } from "../core/search-toggle.js"
 import { writeUserEnvVar, type UserEnvWriteResult } from "../core/user-env.js"
-import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
+import { addModel, addProvider, deleteModel, deleteProvider, findModelReferenceKeys, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
 import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
 import { prepareNpmPluginStateChange, removeDisabledNpmPluginState } from "../core/npm-plugin-state.js"
 import { deletePlugin, disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
@@ -74,15 +74,17 @@ import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./mode
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
 import { TuiKeybindProvider } from "./keybinds.js"
 import { TuiMenuMemoryProvider } from "./menu-memory.js"
-import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference } from "./preferences.js"
+import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference, type LoadedTuiPreferences } from "./preferences.js"
 import { TuiThemeProvider } from "./theme.js"
 import { OpenCodeBusyDialog, OpenCodeFrame, OpenCodeNotice } from "./ui.js"
 import { isRecord } from "../core/object-utils.js"
 import type { GeneratedProviderDraft } from "../core/provider-generator.js"
 import type { DeleteTargetState, DiffReviewState, PromptListMode, ProviderFlowDraft, ToolsResultState, TuiAction, TuiConfigSelection, TuiRoute } from "./types.js"
 
-export function App() {
+export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
   const { exit } = useApp()
+  const initialPreferences = props.initialPreferences
+  const initialTuiPreferences = initialPreferences?.preferences ?? defaultTuiPreferences
   const [route, setRoute] = useState<TuiRoute>("home")
   const routeHistory = useRef<TuiRoute[]>([])
   const [config, setConfig] = useState<TuiConfigSelection>({ scope: "global" })
@@ -90,9 +92,9 @@ export function App() {
   const [busyMessage, setBusyMessage] = useState<string>()
   const [toolsRefreshKey, setToolsRefreshKey] = useState(0)
   const [toolsResult, setToolsResult] = useState<ToolsResultState>()
-  const [preferenceWarning, setPreferenceWarning] = useState<string>()
-  const [preferencePath, setPreferencePath] = useState<string>()
-  const [tuiPreferences, setTuiPreferences] = useState(defaultTuiPreferences)
+  const [preferenceWarning, setPreferenceWarning] = useState<string | undefined>(() => initialPreferences?.diagnostics.length ? initialPreferences.diagnostics.join(" ") : undefined)
+  const [preferencePath, setPreferencePath] = useState<string | undefined>(() => initialPreferences?.path)
+  const [tuiPreferences, setTuiPreferences] = useState(initialTuiPreferences)
   const [providerDraft, setProviderDraft] = useState<ProviderFlowDraft>()
   const [existingProviderEdit, setExistingProviderEdit] = useState<{ id: string; provider: Record<string, unknown> }>()
   const [existingModelEdit, setExistingModelEdit] = useState<{ providerID: string; modelID: string; model: Record<string, unknown> }>()
@@ -106,7 +108,7 @@ export function App() {
   const [diffReturnRoute, setDiffReturnRoute] = useState<TuiRoute>("home")
   const [diffCompletedRoute, setDiffCompletedRoute] = useState<TuiRoute>("home")
   const [diffReview, setDiffReview] = useState<DiffReviewState>({
-    targetPath: translate(defaultTuiPreferences.language, "diff.noTargetSelected"),
+    targetPath: translate(initialTuiPreferences.language, "diff.noTargetSelected"),
     diff: createConfigDiff("", ""),
   })
   const languageWriteInFlight = useRef(false)
@@ -151,6 +153,7 @@ export function App() {
   }
 
   useEffect(() => {
+    if (initialPreferences) return
     let active = true
     loadTuiPreferences().then((result) => {
       if (!active) return
@@ -161,7 +164,7 @@ export function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [initialPreferences])
 
   useTuiInput((input, key) => {
     if (key.escape && route === "home") exit()
@@ -934,16 +937,19 @@ export function App() {
   async function confirmDelete(token?: string) {
     if (!deleteTarget) return
     const expectedToken = deleteTarget.kind === "provider" ? `delete:${deleteTarget.providerID}` : `delete:${deleteTarget.providerID}/${deleteTarget.modelID}`
-    if (deleteTarget.references.length > 0 && token !== expectedToken) {
-      setDeleteTarget({ ...deleteTarget, error: translate(tuiPreferences.language, "delete.error.confirmToken", { token: expectedToken }) })
+    const expectedInput = deleteTarget.kind === "model" ? `${deleteTarget.providerID}/${deleteTarget.modelID}` : expectedToken
+    if (deleteTarget.references.length > 0 && token !== expectedInput) {
+      const errorKey = deleteTarget.kind === "model" ? "delete.error.modelName" : "delete.error.confirmToken"
+      setDeleteTarget({ ...deleteTarget, error: translate(tuiPreferences.language, errorKey, { token: expectedInput }) })
       return
     }
+    const confirmationToken = deleteTarget.references.length > 0 ? expectedToken : token
 
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
       if (deleteTarget.kind === "provider") {
-        const nextConfig = deleteProvider(document.data, deleteTarget.providerID, { confirmReferencedDelete: token })
+        const nextConfig = deleteProvider(document.data, deleteTarget.providerID, { confirmReferencedDelete: confirmationToken })
         const nextText = applyConfigEdit(document, ["provider", deleteTarget.providerID], undefined)
         openDiffReview({
           targetPath: target.path,
@@ -955,8 +961,12 @@ export function App() {
         return
       }
 
-      const nextConfig = deleteModel(document.data, deleteTarget.providerID, deleteTarget.modelID, { confirmReferencedDelete: token })
-      const nextText = applyConfigEdit(document, ["provider", deleteTarget.providerID, "models", deleteTarget.modelID], undefined)
+      const referenceKeys = findModelReferenceKeys(document.data, deleteTarget.providerID, deleteTarget.modelID)
+      const nextConfig = deleteModel(document.data, deleteTarget.providerID, deleteTarget.modelID, { confirmReferencedDelete: confirmationToken })
+      const nextText = applyConfigEdits(document, [
+        ...referenceKeys.map((key) => ({ path: [key], value: undefined })),
+        { path: ["provider", deleteTarget.providerID, "models", deleteTarget.modelID], value: undefined },
+      ])
       openDiffReview({
         targetPath: target.path,
         diff: createConfigDiff(document.target.exists ? document.text : "", nextText),

@@ -260,8 +260,6 @@ export function modelsDevToModelDraft(model: ModelsDevModel): ModelDraft {
   const draft: ModelDraft = {
     name: model.name,
   }
-  if (model.family !== undefined) draft.family = model.family
-  if (model.release_date !== undefined) draft.release_date = model.release_date
   if (model.attachment !== undefined) draft.attachment = model.attachment
   if (model.reasoning !== undefined) draft.reasoning = model.reasoning
   if (model.temperature !== undefined) draft.temperature = model.temperature

@@ -482,6 +482,7 @@ export function OpenCodePrompt(props: {
   cursor?: TextCursor
   masked?: boolean
   error?: string
+  warning?: string
   hint?: string
   footer?: string[]
 }) {
@@ -518,7 +519,8 @@ export function OpenCodePrompt(props: {
           <Text wrap="wrap">{after}</Text>
         </Text>
       </Box>
-      {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted}>{props.hint}</Text></Box> : null}
+      {props.warning ? <Box paddingX={5}><Text color={theme.colors.error} wrap="wrap">{props.warning}</Text></Box> : null}
+      {props.hint ? <Box paddingX={5}><Text color={theme.colors.muted} wrap="wrap">{props.hint}</Text></Box> : null}
       {props.error ? <Box paddingX={5}><Text color={theme.colors.error}>{props.error}</Text></Box> : null}
       <Text> </Text>
       <Box paddingX={5} gap={3}>

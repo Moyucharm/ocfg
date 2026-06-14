@@ -20,6 +20,20 @@ export function DeleteConfirmScreen(props: {
   const targetLabel = props.target.kind === "provider" ? props.target.providerID : `${props.target.providerID}/${props.target.modelID}`
   const kindLabel = t(props.target.kind === "provider" ? "delete.kind.provider" : "delete.kind.model")
   const expectedToken = props.target.kind === "provider" ? `delete:${props.target.providerID}` : `delete:${props.target.providerID}/${props.target.modelID}`
+  const modelReferenceTypes = props.target.references.map((ref) => {
+    if (ref === "/model") return t("delete.reference.model")
+    if (ref === "/small_model") return t("delete.reference.smallModel")
+    return ref
+  })
+  const modelReferenceType = modelReferenceTypes.length === 2
+    ? t("delete.reference.join", { first: modelReferenceTypes[0], second: modelReferenceTypes[1] })
+    : modelReferenceTypes[0]
+  const warning = props.target.kind === "model" && modelReferenceType
+    ? t("delete.referencedModelWarning", { types: modelReferenceType })
+    : undefined
+  const hint = props.target.kind === "model" && modelReferenceType
+    ? t("delete.referencedModelInstruction", { types: modelReferenceType })
+    : t("delete.referencedBy", { refs: props.target.references.join(", ") })
   const groups: OpenCodeMenuGroup[] = [{
     title: t("delete.group"),
     items: actions.map((action) => ({ id: action, label: action === "Confirm" ? t("delete.confirmTarget", { target: targetLabel }) : t("common.cancel"), danger: action === "Confirm" })),
@@ -53,11 +67,12 @@ export function DeleteConfirmScreen(props: {
     return (
       <OpenCodePrompt
         title={t("delete.title", { kind: kindLabel })}
-        label={t("delete.typeToken", { token: expectedToken })}
+        label={props.target.kind === "model" ? t("delete.typeModelName", { model: targetLabel }) : t("delete.typeToken", { token: expectedToken })}
         value={token.value}
         cursor={token.cursor}
+        warning={warning}
         error={props.target.error}
-        hint={t("delete.referencedBy", { refs: props.target.references.join(", ") })}
+        hint={hint}
         footer={[`${t("common.continue")}\tenter`, `${t("common.cancel")}\tesc`]}
       />
     )

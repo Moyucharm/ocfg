@@ -121,9 +121,11 @@ describe("provider editor", () => {
     expect(() => deleteModel(config, "custom", "model")).toThrow(ProviderEditorError)
   })
 
-  test("allows deleting referenced model with token", () => {
-    const config = { ...addProvider({}, draft), model: "custom/model" }
+  test("allows deleting referenced model with token and clears model settings", () => {
+    const config = { ...addProvider({}, draft), model: "custom/model", small_model: "custom/model" }
     const next = deleteModel(config, "custom", "model", { confirmReferencedDelete: "delete:custom/model" })
     expect(((next.provider as any).custom.models as Record<string, unknown>).model).toBeUndefined()
+    expect(next.model).toBeUndefined()
+    expect(next.small_model).toBeUndefined()
   })
 })

@@ -7,6 +7,8 @@ export type DeleteOptions = {
   confirmReferencedDelete?: string
 }
 
+export type ModelReferenceKey = "model" | "small_model"
+
 function cloneConfig(config: Record<string, unknown>): Record<string, unknown> {
   return structuredClone(config)
 }
@@ -87,10 +89,14 @@ export function findProviderReferences(config: Record<string, unknown>, provider
 }
 
 export function findModelReferences(config: Record<string, unknown>, providerID: string, modelID: string): string[] {
-  const references: string[] = []
+  return findModelReferenceKeys(config, providerID, modelID).map((key) => `/${key}`)
+}
+
+export function findModelReferenceKeys(config: Record<string, unknown>, providerID: string, modelID: string): ModelReferenceKey[] {
+  const references: ModelReferenceKey[] = []
   const ref = modelRef(providerID, modelID)
   for (const key of ["model", "small_model"] as const) {
-    if (config[key] === ref) references.push(`/${key}`)
+    if (config[key] === ref) references.push(key)
   }
   return references
 }
@@ -141,14 +147,15 @@ export function deleteModel(
   modelID: string,
   options?: DeleteOptions,
 ): Record<string, unknown> {
-  const refs = findModelReferences(config, providerID, modelID)
-  if (refs.length > 0) assertConfirmation(`delete:${providerID}/${modelID}`, options)
+  const refKeys = findModelReferenceKeys(config, providerID, modelID)
+  if (refKeys.length > 0) assertConfirmation(`delete:${providerID}/${modelID}`, options)
 
   const next = cloneConfig(config)
   const provider = getProvider(next, providerID)
   const models = ensureModelMap(provider)
   if (models[modelID] === undefined) throw new ProviderEditorError(`Model "${providerID}/${modelID}" does not exist`)
   delete models[modelID]
+  for (const key of refKeys) delete next[key]
   return next
 }
 

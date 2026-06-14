@@ -401,6 +401,23 @@ describe("commands", () => {
     expect(parse(await readFile(filePath, "utf8")).provider.custom.models.model).toBeUndefined()
   })
 
+  test("delete referenced model clears default model settings", async () => {
+    const filePath = await writeConfig(`{
+  "model": "custom/model",
+  "small_model": "custom/model",
+  "provider": { "custom": { "models": { "model": {}, "other": {} } } }
+}
+`)
+
+    await deleteModelCommand("custom/model", { configPath: filePath, confirmToken: "delete:custom/model", validate: valid })
+
+    const config = parse(await readFile(filePath, "utf8"))
+    expect(config.model).toBeUndefined()
+    expect(config.small_model).toBeUndefined()
+    expect(config.provider.custom.models.model).toBeUndefined()
+    expect(config.provider.custom.models.other).toBeDefined()
+  })
+
   test("lists configured plugins", async () => {
     const filePath = await writeConfig(`{
   "plugin": ["opencode-wakatime", ["@my-org/custom-plugin", { "enabled": true }]]
