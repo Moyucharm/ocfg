@@ -2,7 +2,6 @@ import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
 import { hasHighSeverity } from "../core/doctor.js"
 import { restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
-import { validateConfig } from "../core/schema-validator.js"
 import { writeConfigSafely, type ValidationResult, type WriteConfigSafelyResult } from "../core/config-writer.js"
 import type { ConfigDocument, ConfigScope, Diagnostic, EndpointKind } from "../core/types.js"
 
@@ -80,6 +79,7 @@ export async function validateForWrite(
   validate: MutatingCommandOptions["validate"],
 ): Promise<ValidationResult> {
   if (validate) return validate(config)
+  const { validateConfig } = await import("../core/schema-validator.js")
   return validateConfig(config, { relaxModelEnum: true })
 }
 
