@@ -93,10 +93,13 @@ export async function writeMutation(input: {
     path: string
     value: string
   }
+  beforeWrite?: () => Promise<(() => Promise<void>) | void>
 }) {
   const validation = await validateForWrite(input.nextConfig, input.options.validate)
   let secretSnapshot: Awaited<ReturnType<typeof snapshotSecretFile>> | undefined
+  let rollbackBeforeWrite: (() => Promise<void>) | void | undefined
   try {
+    if (!input.options.dryRun && validation.valid && input.beforeWrite) rollbackBeforeWrite = await input.beforeWrite()
     if (input.secretFile && !input.options.dryRun && validation.valid) {
       secretSnapshot = await snapshotSecretFile(input.secretFile.path)
       await writeSecretFileSafely(input.secretFile)
@@ -109,12 +112,14 @@ export async function writeMutation(input: {
       validate: () => validation,
     })
     if (result.diagnostics.length > 0 && secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
+    if (result.diagnostics.length > 0 && rollbackBeforeWrite && !input.options.dryRun) await rollbackBeforeWrite()
     const output = input.warnings && input.warnings.length > 0 ? { ...result, warnings: input.warnings } : result
     printWriteResult(output, input.options.json)
     setExitCodeForDiagnostics(result.diagnostics)
     return output
   } catch (caught) {
     if (secretSnapshot && !input.options.dryRun) await restoreSecretFile(secretSnapshot)
+    if (rollbackBeforeWrite && !input.options.dryRun) await rollbackBeforeWrite()
     throw caught
   }
 }

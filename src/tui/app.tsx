@@ -12,7 +12,8 @@ import { enableExaSearchPermissions, OPENCODE_EXA_ENV } from "../core/search-tog
 import { writeUserEnvVar, type UserEnvWriteResult } from "../core/user-env.js"
 import { addModel, addProvider, deleteModel, deleteProvider, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
 import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
-import { disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
+import { prepareNpmPluginStateChange, removeDisabledNpmPluginState } from "../core/npm-plugin-state.js"
+import { deletePlugin, disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
 import { applyConfigEdit, applyConfigEdits, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import {
   addInstructionRef,
@@ -335,9 +336,12 @@ export function App() {
       return { ...review, diagnostics: validation.diagnostics, error: validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
     }
 
-    const secretSnapshot = review.secretFile ? await snapshotSecretFile(review.secretFile.path) : undefined
+    let secretSnapshot: Awaited<ReturnType<typeof snapshotSecretFile>> | undefined
+    let rollbackNpmPluginState: (() => Promise<void>) | undefined
     let secretFilePath: string | undefined
     try {
+      secretSnapshot = review.secretFile ? await snapshotSecretFile(review.secretFile.path) : undefined
+      rollbackNpmPluginState = review.npmPluginState ? await prepareNpmPluginStateChange(review.npmPluginState) : undefined
       if (review.secretFile) {
         const secretResult = await writeSecretFileSafely(review.secretFile)
         secretFilePath = secretResult.path
@@ -350,6 +354,7 @@ export function App() {
       })
       if (result.diagnostics.length > 0) {
         if (secretSnapshot) await restoreSecretFile(secretSnapshot)
+        if (rollbackNpmPluginState) await rollbackNpmPluginState()
         return { ...review, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
       }
       let promptFilePath: string | undefined
@@ -360,6 +365,7 @@ export function App() {
       return { ...review, result, secretFilePath, promptFilePath, completed: true }
     } catch (caught) {
       if (secretSnapshot) await restoreSecretFile(secretSnapshot)
+      if (rollbackNpmPluginState) await rollbackNpmPluginState()
       return { ...review, error: caught instanceof Error ? caught.message : String(caught) }
     }
   }
@@ -494,6 +500,7 @@ export function App() {
         document,
         nextConfig,
         nextText,
+        npmPluginState: { action: "remove-disabled", target, packageName },
       }, "plugin-add", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-add")
@@ -546,11 +553,11 @@ export function App() {
     }
   }
 
-  async function reviewPluginDisable(packageName: string) {
+  async function reviewPluginDisable(plugin: PluginListItem) {
     try {
       const target = config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
-      const nextConfig = disablePlugin(document.data, packageName)
+      const nextConfig = disablePlugin(document.data, plugin.packageName)
       const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
       openDiffReview({
         targetPath: target.path,
@@ -558,9 +565,55 @@ export function App() {
         document,
         nextConfig,
         nextText,
+        npmPluginState: { action: "disable", target, plugin: { packageName: plugin.packageName, options: plugin.options } },
       }, "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-list")
+    }
+  }
+
+  async function reviewPluginEnable(plugin: PluginListItem) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      const document = await readConfig(target)
+      const nextConfig = enablePlugin(document.data, plugin.packageName, plugin.options)
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+        npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
+      }, "plugin-edit", "plugin-list")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
+    }
+  }
+
+  async function reviewPluginDelete(plugin: PluginListItem) {
+    try {
+      const target = config.target ?? locateConfig({ scope: config.scope })
+      if (plugin.status === "disabled") {
+        await withSaving(() => removeDisabledNpmPluginState(target, plugin.packageName))
+        setMessage(translate(tuiPreferences.language, "plugin.deleted", { id: plugin.packageName }))
+        completeFlow("plugin-list")
+        return
+      }
+
+      const document = await readConfig(target)
+      const nextConfig = deletePlugin(document.data, plugin.packageName)
+      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      openDiffReview({
+        targetPath: target.path,
+        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
+        document,
+        nextConfig,
+        nextText,
+        npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
+      }, "plugin-edit", "plugin-list")
+    } catch (caught) {
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
     }
   }
 
@@ -1045,7 +1098,9 @@ export function App() {
                 plugin={selectedPlugin}
                 onSaveOptions={(packageName, options) => void reviewPluginOptions(packageName, options)}
                 onClearOptions={(packageName) => void reviewPluginClearOptions(packageName)}
-                onDisable={(packageName) => void reviewPluginDisable(packageName)}
+                onDisable={(plugin) => void reviewPluginDisable(plugin)}
+                onEnable={(plugin) => void reviewPluginEnable(plugin)}
+                onDelete={(plugin) => void reviewPluginDelete(plugin)}
                 onBack={() => goBack()}
               />
             ) : null}

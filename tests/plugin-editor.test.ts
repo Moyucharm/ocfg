@@ -21,6 +21,7 @@ describe("plugin editor", () => {
         packageName: "@my-org/custom-plugin",
         options: { enabled: true },
         kind: "package-with-options",
+        status: "enabled",
       },
     ])
   })

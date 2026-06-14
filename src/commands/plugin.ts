@@ -6,7 +6,8 @@ import {
   listLocalPlugins,
   type LocalPluginMutationResult,
 } from "../core/local-plugin-manager.js"
-import { addPlugin, deletePlugin, disablePlugin, enablePlugin, listPlugins, updatePluginOptions, type PluginOptions } from "../core/plugin-editor.js"
+import { findDisabledNpmPlugin, listNpmPlugins, prepareNpmPluginStateChange, removeDisabledNpmPluginState, type NpmPluginStateChange } from "../core/npm-plugin-state.js"
+import { addPlugin, deletePlugin, disablePlugin, enablePlugin, findPlugin, updatePluginOptions, type PluginOptions } from "../core/plugin-editor.js"
 import {
   loadConfigForCommand,
   printDiagnostics,
@@ -15,6 +16,7 @@ import {
   type ConfigCommandOptions,
   type MutatingCommandOptions,
 } from "./common.js"
+import type { ConfigDocument, ConfigTarget } from "../core/types.js"
 
 export type PluginOptionsCommandOptions = MutatingCommandOptions & {
   optionsJson?: string
@@ -35,12 +37,36 @@ function parsePluginOptionsJSON(value: string | undefined): PluginOptions | unde
   return parsed as PluginOptions
 }
 
-async function writePluginMutation(options: MutatingCommandOptions, mutate: (config: Record<string, unknown>) => Record<string, unknown>) {
-  const { document } = await loadConfigForCommand(options)
+async function writePluginMutationForDocument(
+  document: ConfigDocument,
+  options: MutatingCommandOptions,
+  mutate: (config: Record<string, unknown>) => Record<string, unknown>,
+  stateChange?: NpmPluginStateChange,
+) {
   const nextConfig = mutate(document.data)
   const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
 
-  return writeMutation({ document, options, nextConfig, nextText })
+  return writeMutation({
+    document,
+    options,
+    nextConfig,
+    nextText,
+    beforeWrite: stateChange ? () => prepareNpmPluginStateChange(stateChange) : undefined,
+  })
+}
+
+async function writePluginMutation(options: MutatingCommandOptions, mutate: (config: Record<string, unknown>) => Record<string, unknown>) {
+  const { document } = await loadConfigForCommand(options)
+  return writePluginMutationForDocument(document, options, mutate)
+}
+
+function printDisabledNpmPluginDeleted(target: ConfigTarget, packageName: string, dryRun = false, json = false) {
+  if (json) {
+    console.log(JSON.stringify({ action: "delete", target, packageName, status: "disabled", changed: !dryRun, dryRun }, null, 2))
+    return
+  }
+
+  console.log(`${dryRun ? "Dry run delete" : "Deleted"} disabled npm plugin: ${packageName}`)
 }
 
 export async function listPluginsCommand(options: ConfigCommandOptions) {
@@ -51,7 +77,7 @@ export async function listPluginsCommand(options: ConfigCommandOptions) {
     return
   }
 
-  const plugins = listPlugins(document.data)
+  const plugins = await listNpmPlugins(document.data, target)
   const localPlugins = await listLocalPlugins({ scope: options.configScope ?? "global", cwd: options.cwd, home: options.home })
   if (options.json) {
     console.log(JSON.stringify({ target, plugins, npmPlugins: plugins, localPlugins }, null, 2))
@@ -67,8 +93,7 @@ export async function listPluginsCommand(options: ConfigCommandOptions) {
   if (plugins.length > 0) {
     console.log("npm plugins:")
     for (const plugin of plugins) {
-      const suffix = plugin.options ? " (options)" : ""
-      console.log(`- ${plugin.packageName}${suffix}`)
+      console.log(`- ${plugin.packageName} (${plugin.status})`)
     }
   }
   if (localPlugins.length > 0) {
@@ -78,7 +103,13 @@ export async function listPluginsCommand(options: ConfigCommandOptions) {
 }
 
 export async function addPluginCommand(packageName: string, options: PluginOptionsCommandOptions) {
-  return writePluginMutation(options, (config) => addPlugin(config, packageName, parsePluginOptionsJSON(options.optionsJson)))
+  const { target, document } = await loadConfigForCommand(options)
+  return writePluginMutationForDocument(
+    document,
+    options,
+    (config) => addPlugin(config, packageName, parsePluginOptionsJSON(options.optionsJson)),
+    { action: "remove-disabled", target, packageName },
+  )
 }
 
 export async function installPluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -88,7 +119,13 @@ export async function installPluginCommand(plugin: string, options: PluginOption
     return result
   }
 
-  return writePluginMutation(options, (config) => enablePlugin(config, plugin, parsePluginOptionsJSON(options.optionsJson)))
+  const { target, document } = await loadConfigForCommand(options)
+  return writePluginMutationForDocument(
+    document,
+    options,
+    (config) => enablePlugin(config, plugin, parsePluginOptionsJSON(options.optionsJson)),
+    { action: "remove-disabled", target, packageName: plugin },
+  )
 }
 
 export async function enablePluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -98,7 +135,16 @@ export async function enablePluginCommand(plugin: string, options: PluginOptions
     return result
   }
 
-  return writePluginMutation(options, (config) => enablePlugin(config, plugin, parsePluginOptionsJSON(options.optionsJson)))
+  const { target, document } = await loadConfigForCommand(options)
+  const existing = findPlugin(document.data, plugin)
+  const disabled = await findDisabledNpmPlugin(target, plugin)
+  const parsedOptions = parsePluginOptionsJSON(options.optionsJson)
+  return writePluginMutationForDocument(
+    document,
+    options,
+    (config) => enablePlugin(config, plugin, parsedOptions ?? (existing ? undefined : disabled?.options)),
+    { action: "remove-disabled", target, packageName: plugin },
+  )
 }
 
 export async function disablePluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -108,7 +154,14 @@ export async function disablePluginCommand(plugin: string, options: PluginOption
     return result
   }
 
-  return writePluginMutation(options, (config) => disablePlugin(config, plugin))
+  const { target, document } = await loadConfigForCommand(options)
+  const existing = findPlugin(document.data, plugin)
+  return writePluginMutationForDocument(
+    document,
+    options,
+    (config) => disablePlugin(config, plugin),
+    existing ? { action: "disable", target, plugin: existing } : undefined,
+  )
 }
 
 export async function editPluginCommand(packageName: string, options: PluginOptionsCommandOptions) {
@@ -132,5 +185,19 @@ function printLocalPluginResult(result: LocalPluginMutationResult, json = false)
 }
 
 export async function deletePluginCommand(packageName: string, options: MutatingCommandOptions) {
-  return writePluginMutation(options, (config) => deletePlugin(config, packageName))
+  const { target, document } = await loadConfigForCommand(options)
+  const existing = findPlugin(document.data, packageName)
+  const disabled = await findDisabledNpmPlugin(target, packageName)
+  if (!existing && disabled) {
+    if (!options.dryRun) await removeDisabledNpmPluginState(target, packageName)
+    printDisabledNpmPluginDeleted(target, disabled.packageName, options.dryRun ?? false, options.json)
+    return { action: "delete", target, packageName: disabled.packageName, status: "disabled", changed: !options.dryRun, dryRun: options.dryRun ?? false }
+  }
+
+  return writePluginMutationForDocument(
+    document,
+    options,
+    (config) => deletePlugin(config, packageName),
+    { action: "remove-disabled", target, packageName },
+  )
 }

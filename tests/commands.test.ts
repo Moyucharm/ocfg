@@ -411,6 +411,7 @@ describe("commands", () => {
 
     const output = JSON.parse(log.mock.calls[0]?.[0] as string)
     expect(output.plugins.map((plugin: { packageName: string }) => plugin.packageName)).toEqual(["opencode-wakatime", "@my-org/custom-plugin"])
+    expect(output.plugins.map((plugin: { status: string }) => plugin.status)).toEqual(["enabled", "enabled"])
     expect(output.npmPlugins).toHaveLength(2)
     expect(output.localPlugins).toEqual([])
   })
@@ -438,8 +439,49 @@ describe("commands", () => {
     await disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
     expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([])
 
+    await listPluginsCommand({ configPath: filePath, json: true })
+    let output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string; status: string }) => [plugin.packageName, plugin.status])).toEqual([["opencode-wakatime", "disabled"]])
+
     await enablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
-    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual(["opencode-wakatime"])
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { enabled: true }]])
+
+    await disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    await deletePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    await listPluginsCommand({ configPath: filePath, json: true })
+    output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins).toEqual([])
+  })
+
+  test("enable plugin does not restore stale disabled options over enabled config", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": [["opencode-wakatime", { "old": true }]]
+}
+`)
+
+    await disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+    await writeFile(filePath, `{
+  "plugin": [["opencode-wakatime", { "fresh": true }]]
+}
+`)
+
+    await enablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
+
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { fresh: true }]])
+  })
+
+  test("disable plugin does not remove config when disabled-state file is invalid", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": [["opencode-wakatime", { "enabled": true }]]
+}
+`)
+    const statePath = path.join(ocfgDataPath(), "plugins", "disabled-npm.json")
+    await mkdir(path.dirname(statePath), { recursive: true })
+    await writeFile(statePath, "not json")
+
+    await expect(disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })).rejects.toThrow("Invalid disabled npm plugin state")
+
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { enabled: true }]])
   })
 
   test("installs enables and disables local plugins", async () => {

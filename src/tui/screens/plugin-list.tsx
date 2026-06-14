@@ -3,7 +3,8 @@ import { Text } from "ink"
 import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
 import { listLocalPlugins, type LocalPluginItem } from "../../core/local-plugin-manager.js"
-import { listPlugins, type PluginListItem } from "../../core/plugin-editor.js"
+import { listNpmPlugins } from "../../core/npm-plugin-state.js"
+import type { PluginListItem } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
@@ -39,8 +40,8 @@ export function PluginListScreen(props: {
       items: plugins.map((plugin) => ({
         id: `npm:${plugin.packageName}`,
         label: plugin.packageName,
-        meta: plugin.options ? t("plugin.hasOptions") : t("plugin.enabled"),
-        tone: "success",
+        meta: t(plugin.status === "enabled" ? "plugin.enabled" : "plugin.disabled"),
+        tone: plugin.status === "enabled" ? "success" : "danger",
       })),
     },
     {
@@ -119,7 +120,7 @@ export function PluginListScreen(props: {
       try {
         const target = props.selection.target ?? locateConfig({ scope: props.selection.scope })
         const document = await readConfig(target)
-        const nextPlugins = listPlugins(document.data)
+        const nextPlugins = await listNpmPlugins(document.data, target)
         const nextLocalPlugins = await listLocalPlugins({ scope: props.selection.scope })
         if (!active) return
         setPlugins(nextPlugins)

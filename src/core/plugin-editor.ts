@@ -4,12 +4,14 @@ export class PluginEditorError extends Error {}
 
 export type PluginOptions = Record<string, unknown>
 export type PluginConfigEntry = string | [string, PluginOptions]
+export type PluginStatus = "enabled" | "disabled"
 
 export type PluginListItem = {
   index: number
   packageName: string
   options?: PluginOptions
   kind: "package" | "package-with-options"
+  status: PluginStatus
 }
 
 function cloneConfig(config: Record<string, unknown>): Record<string, unknown> {
@@ -39,12 +41,13 @@ function ensurePluginArray(config: Record<string, unknown>): unknown[] {
   return config.plugin
 }
 
-function pluginEntryToItem(entry: unknown, index: number): PluginListItem {
+function pluginEntryToItem(entry: unknown, index: number, status: PluginStatus): PluginListItem {
   if (typeof entry === "string") {
     return {
       index,
       packageName: normalizePluginPackage(entry),
       kind: "package",
+      status,
     }
   }
 
@@ -54,22 +57,32 @@ function pluginEntryToItem(entry: unknown, index: number): PluginListItem {
       packageName: normalizePluginPackage(entry[0]),
       options: entry[1],
       kind: "package-with-options",
+      status,
     }
   }
 
   throw new PluginEditorError(`Plugin entry at index ${index} must be a package string or [package, options] tuple`)
 }
 
-function pluginEntry(packageName: string, options?: PluginOptions): PluginConfigEntry {
+export function pluginEntry(packageName: string, options?: PluginOptions): PluginConfigEntry {
   return options === undefined ? packageName : [packageName, options]
 }
 
 function findPluginIndex(entries: unknown[], packageName: string) {
-  return entries.findIndex((entry, index) => pluginEntryToItem(entry, index).packageName === packageName)
+  return entries.findIndex((entry, index) => pluginEntryToItem(entry, index, "enabled").packageName === packageName)
 }
 
-export function listPlugins(config: Record<string, unknown>): PluginListItem[] {
-  return pluginArray(config).map((entry, index) => pluginEntryToItem(entry, index))
+export function listPlugins(config: Record<string, unknown>, status: PluginStatus = "enabled"): PluginListItem[] {
+  return pluginArray(config).map((entry, index) => pluginEntryToItem(entry, index, status))
+}
+
+export function findPlugin(config: Record<string, unknown>, packageValue: string): PluginListItem | undefined {
+  const packageName = normalizePluginPackage(packageValue)
+  return listPlugins(config).find((plugin) => plugin.packageName === packageName)
+}
+
+export function pluginItemToEntry(plugin: Pick<PluginListItem, "packageName" | "options">): PluginConfigEntry {
+  return pluginEntry(plugin.packageName, plugin.options)
 }
 
 export function addPlugin(config: Record<string, unknown>, packageValue: string, options?: PluginOptions): Record<string, unknown> {

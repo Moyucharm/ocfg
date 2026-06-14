@@ -24,7 +24,9 @@ export function PluginEditScreen(props: {
   plugin: PluginListItem
   onSaveOptions: (packageName: string, options: PluginOptions) => void
   onClearOptions: (packageName: string) => void
-  onDisable: (packageName: string) => void
+  onDisable: (plugin: PluginListItem) => void
+  onEnable: (plugin: PluginListItem) => void
+  onDelete: (plugin: PluginListItem) => void
   onBack: () => void
 }) {
   const t = useTuiText()
@@ -33,12 +35,17 @@ export function PluginEditScreen(props: {
   const [error, setError] = useState<string>()
   const keybinds = useTuiKeybinds()
 
+  const isEnabled = props.plugin.status === "enabled"
   const menuGroups: OpenCodeMenuGroup[] = [{
     title: t("plugin.plugin"),
-    items: [
-      { id: "options", label: t("plugin.options"), meta: props.plugin.options ? t("plugin.hasOptions") : t("common.empty") },
-      { id: "clear-options", label: t("plugin.clearOptions") },
+    items: isEnabled ? [
+      { id: "options", label: t("plugin.options") },
+      { id: "clear-options", label: t("plugin.clearOptions"), danger: true },
       { id: "disable", label: t("plugin.disable"), danger: true },
+      { id: "delete", label: t("plugin.delete"), danger: true },
+    ] : [
+      { id: "enable", label: t("plugin.enable"), tone: "success" },
+      { id: "delete", label: t("plugin.delete"), danger: true },
     ],
   }]
   const { selected, setSelected, rememberSelected } = useRememberedOpenCodeMenuSelection({ memoryKey: `plugin-edit:${props.plugin.packageName}`, groups: menuGroups })
@@ -51,7 +58,9 @@ export function PluginEditScreen(props: {
       return
     }
     if (action === "clear-options") props.onClearOptions(props.plugin.packageName)
-    if (action === "disable") props.onDisable(props.plugin.packageName)
+    if (action === "disable") props.onDisable(props.plugin)
+    if (action === "enable") props.onEnable(props.plugin)
+    if (action === "delete") props.onDelete(props.plugin)
   }
 
   function saveOptions() {

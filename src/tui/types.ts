@@ -1,6 +1,7 @@
 import type { ConfigDocument } from "../core/types.js"
 import type { ConfigScope, ConfigTarget, Diagnostic, EndpointKind, SecretRef } from "../core/types.js"
 import type { WriteConfigSafelyResult } from "../core/config-writer.js"
+import type { NpmPluginStateChange } from "../core/npm-plugin-state.js"
 
 export type TuiRoute =
   | "home"
@@ -80,6 +81,7 @@ export type DiffReviewState = {
     name: string
     path: string
   }
+  npmPluginState?: NpmPluginStateChange
   promptFilePath?: string
   error?: string
   completed?: boolean
