@@ -56,7 +56,7 @@ function collect(value: string, previous: string[]) {
 program
   .name("ocfg")
   .description("OpenCode configuration editor.")
-  .version("0.1.0")
+  .version("0.2.0")
   .action(async () => {
     await runAction(openTui)
   })

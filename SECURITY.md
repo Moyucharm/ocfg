@@ -84,9 +84,9 @@ Dry runs do not create config files, secret files, backups, or temporary write o
 
 Deleting a provider referenced by `model` or `small_model` requires an exact token such as `delete:custom`.
 
-Deleting a model referenced by `model` or `small_model` requires an exact token such as `delete:custom/model`.
+The CLI requires an exact token such as `delete:custom/model` when deleting a model referenced by `model` or `small_model`.
 
-The TUI displays references before allowing referenced deletes.
+The TUI displays a warning for referenced model deletes, asks users to type the full `provider/model` name, and clears matching default model settings after confirmation.
 
 The CLI accepts `--confirm-token` for referenced deletes.
 
