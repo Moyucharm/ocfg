@@ -3,7 +3,7 @@ import { existsSync } from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 import { applyEdits, modify } from "jsonc-parser"
-import { locateConfig } from "./config-locator.js"
+import { hasConfigFileContent, locateConfig } from "./config-locator.js"
 import { readConfig } from "./config-reader.js"
 import { isRecord } from "./object-utils.js"
 import { normalizePluginPackage, pluginEntry, PluginEditorError, type PluginConfigEntry, type PluginOptions } from "./plugin-editor.js"
@@ -63,6 +63,7 @@ function siblingConfigPath(directory: string, kind: PluginHostKind) {
   const name = configNameForKind(kind)
   const jsoncPath = path.join(directory, `${name}.jsonc`)
   const jsonPath = path.join(directory, `${name}.json`)
+  if (kind === "tui") return existsSync(jsoncPath) || !hasConfigFileContent(jsonPath) ? jsoncPath : jsonPath
   return existsSync(jsoncPath) || !existsSync(jsonPath) ? jsoncPath : jsonPath
 }
 

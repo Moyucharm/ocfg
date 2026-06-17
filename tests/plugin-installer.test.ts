@@ -66,4 +66,23 @@ describe("plugin installer", () => {
     expect(locatePluginHostConfig({ configPath: tuiPath }, "server").path).toBe(serverPath)
     expect(locatePluginHostConfig({ configPath: customTuiPath }, "tui").path).toBe(customTuiPath)
   })
+
+  test("prefers tui jsonc sibling over empty tui json", async () => {
+    const dir = await tempDir()
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiJsonPath = path.join(dir, "tui.json")
+    const tuiJsoncPath = path.join(dir, "tui.jsonc")
+    await writeFile(tuiJsonPath, "", "utf8")
+
+    expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiJsoncPath)
+  })
+
+  test("uses non-empty tui json sibling when jsonc is absent", async () => {
+    const dir = await tempDir()
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiJsonPath = path.join(dir, "tui.json")
+    await writeFile(tuiJsonPath, "{}", "utf8")
+
+    expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiJsonPath)
+  })
 })

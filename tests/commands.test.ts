@@ -518,6 +518,110 @@ describe("commands", () => {
     await expect(stat(path.join(configDir, "opencode.jsonc"))).rejects.toThrow()
   })
 
+  test("lists plugins without parsing stale empty tui json", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-stale-tui-list-"))
+    const configDir = path.join(home, ".config", "opencode")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(path.join(configDir, "tui.json"), "")
+
+    await listPluginsCommand({ configScope: "global", home, json: true })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.targets.tui.path).toBe(path.join(configDir, "tui.jsonc"))
+    expect(output.plugins).toEqual([])
+  })
+
+  test("installs tui plugin into jsonc when stale empty tui json exists", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-stale-tui-install-"))
+    const configDir = path.join(home, ".config", "opencode")
+    const staleTuiJson = path.join(configDir, "tui.json")
+    const tuiJsonc = path.join(configDir, "tui.jsonc")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(staleTuiJson, "")
+
+    await installPluginCommand("opencode-cache-hit@latest", { configScope: "global", home, pluginTarget: "tui", validate: valid })
+
+    const tui = parse(await readFile(tuiJsonc, "utf8"))
+    expect(tui.$schema).toBe("https://opencode.ai/tui.json")
+    expect(tui.plugin).toEqual(["opencode-cache-hit@latest"])
+    await expect(readFile(staleTuiJson, "utf8")).resolves.toBe("")
+    await expect(stat(path.join(home, ".config", "ocfg", "backups", "configs"))).rejects.toThrow()
+  })
+
+  test("installs tui plugin into existing non-empty tui json", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-existing-tui-json-install-"))
+    const configDir = path.join(home, ".config", "opencode")
+    const tuiJson = path.join(configDir, "tui.json")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(tuiJson, `{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["seed"]
+}
+`, "utf8")
+
+    await installPluginCommand("tui-plugin", { configScope: "global", home, pluginTarget: "tui", validate: valid })
+
+    expect(parse(await readFile(tuiJson, "utf8")).plugin).toEqual(["seed", "tui-plugin"])
+    await expect(stat(path.join(configDir, "tui.jsonc"))).rejects.toThrow()
+  })
+
+  test("manages tui plugins from jsonc when stale empty tui json exists", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-stale-tui-manage-"))
+    const configDir = path.join(home, ".config", "opencode")
+    const staleTuiJson = path.join(configDir, "tui.json")
+    const tuiJsonc = path.join(configDir, "tui.jsonc")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(staleTuiJson, "")
+    await writeFile(tuiJsonc, `{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["tui-plugin"]
+}
+`, "utf8")
+
+    await disablePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    expect(parse(await readFile(tuiJsonc, "utf8")).plugin).toEqual([])
+
+    await enablePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    expect(parse(await readFile(tuiJsonc, "utf8")).plugin).toEqual(["tui-plugin"])
+
+    await disablePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    await deletePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    await listPluginsCommand({ configScope: "global", home, json: true })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins).toEqual([])
+    await expect(readFile(staleTuiJson, "utf8")).resolves.toBe("")
+  })
+
+  test("manages tui plugins from existing non-empty tui json", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-existing-tui-json-manage-"))
+    const configDir = path.join(home, ".config", "opencode")
+    const tuiJson = path.join(configDir, "tui.json")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(tuiJson, `{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["tui-plugin"]
+}
+`, "utf8")
+
+    await listPluginsCommand({ configScope: "global", home, json: true })
+    let output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.targets.tui.path).toBe(tuiJson)
+    expect(output.plugins.map((plugin: { packageName: string; configKind: string }) => [plugin.packageName, plugin.configKind])).toEqual([["tui-plugin", "tui"]])
+
+    await disablePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    expect(parse(await readFile(tuiJson, "utf8")).plugin).toEqual([])
+
+    await enablePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    expect(parse(await readFile(tuiJson, "utf8")).plugin).toEqual(["tui-plugin"])
+
+    await deletePluginCommand("tui-plugin", { configScope: "global", home, validate: valid })
+    await listPluginsCommand({ configScope: "global", home, json: true })
+    output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins).toEqual([])
+    await expect(stat(path.join(configDir, "tui.jsonc"))).rejects.toThrow()
+  })
+
   test("edits disables enables and deletes tui npm plugins by auto target", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-tui-manage-"))
     const serverPath = path.join(dir, "opencode.jsonc")

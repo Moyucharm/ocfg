@@ -116,10 +116,13 @@ export async function writeConfigSafely(input: WriteConfigSafelyInput): Promise<
   let backupDirectory: string | undefined
   const shouldBackup = input.backup ?? true
   if (shouldBackup && (await fileExists(targetPath))) {
-    backupDirectory = resolveConfigBackupDirectory(input.document.target)
-    await mkdir(backupDirectory, { recursive: true })
-    backupPath = await availableBackupPath(targetPath, input.now ?? new Date(), backupDirectory)
-    await writeFile(backupPath, await readFile(targetPath, "utf8"), "utf8")
+    const currentText = await readFile(targetPath, "utf8")
+    if (currentText.trim()) {
+      backupDirectory = resolveConfigBackupDirectory(input.document.target)
+      await mkdir(backupDirectory, { recursive: true })
+      backupPath = await availableBackupPath(targetPath, input.now ?? new Date(), backupDirectory)
+      await writeFile(backupPath, currentText, "utf8")
+    }
   }
 
   const tempPath = path.join(targetDir, `.${path.basename(targetPath)}.tmp-${process.pid}-${Date.now()}`)

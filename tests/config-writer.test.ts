@@ -138,6 +138,24 @@ describe("config writer", () => {
     expect((await readdir(dir)).filter((entry) => entry.includes(".bak."))).toEqual([])
   })
 
+  test("does not back up empty existing config before write", async () => {
+    const dir = await tempDir()
+    await mkdir(dir, { recursive: true })
+    const filePath = path.join(dir, "opencode.jsonc")
+    await writeFile(filePath, "")
+
+    const result = await writeConfigSafely({
+      document: document(filePath, ""),
+      nextConfig: { model: "new/model" },
+      validate: valid,
+    })
+
+    expect(result.written).toBe(true)
+    expect(result.backupPath).toBeUndefined()
+    await expect(stat(resolveConfigBackupDirectory(document(filePath, "").target))).rejects.toThrow()
+    expect(await readFile(filePath, "utf8")).toContain('"model": "new/model"')
+  })
+
   test("does not create backup when backup is disabled", async () => {
     const dir = await tempDir()
     const filePath = path.join(dir, "opencode.jsonc")

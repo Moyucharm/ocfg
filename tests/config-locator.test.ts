@@ -38,6 +38,29 @@ describe("config locator", () => {
     expect(target.exists).toBe(false)
   })
 
+  test("ignores empty global tui json during automatic lookup", async () => {
+    const home = await tempDir()
+    const configDir = path.join(home, ".config", "opencode")
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(path.join(configDir, "tui.json"), "")
+
+    const target = locateGlobalConfig(home, "tui")
+    expect(target.path).toBe(path.join(configDir, "tui.jsonc"))
+    expect(target.exists).toBe(false)
+  })
+
+  test("uses non-empty global tui json when jsonc is absent", async () => {
+    const home = await tempDir()
+    const configDir = path.join(home, ".config", "opencode")
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(path.join(configDir, "tui.json"), "{}")
+
+    const target = locateGlobalConfig(home, "tui")
+    expect(target.path).toBe(path.join(configDir, "tui.json"))
+    expect(target.exists).toBe(true)
+    expect(target.format).toBe("json")
+  })
+
   test("finds project config by walking upward", async () => {
     const root = await tempDir()
     const nested = path.join(root, "a", "b")
@@ -58,6 +81,29 @@ describe("config locator", () => {
     const target = locateProjectConfig(nested, undefined, "tui")
     expect(target.path).toBe(path.join(root, "tui.jsonc"))
     expect(target.exists).toBe(true)
+  })
+
+  test("ignores project tui json during automatic lookup", async () => {
+    const root = await tempDir()
+    const nested = path.join(root, "a", "b")
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(path.join(root, "tui.json"), "")
+
+    const target = locateProjectConfig(nested, undefined, "tui")
+    expect(target.path).toBe(path.join(nested, "tui.jsonc"))
+    expect(target.exists).toBe(false)
+  })
+
+  test("uses non-empty project tui json when jsonc is absent", async () => {
+    const root = await tempDir()
+    const nested = path.join(root, "a", "b")
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(path.join(root, "tui.json"), "{}")
+
+    const target = locateProjectConfig(nested, undefined, "tui")
+    expect(target.path).toBe(path.join(root, "tui.json"))
+    expect(target.exists).toBe(true)
+    expect(target.format).toBe("json")
   })
 
   test("custom path overrides scope", async () => {

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import type { ConfigLocatorOptions, ConfigTarget } from "./types.js"
@@ -23,9 +23,19 @@ function jsonConfigPath(directory: string, name: ConfigFileName) {
   return path.join(directory, `${name}.json`)
 }
 
+export function hasConfigFileContent(filePath: string) {
+  if (!existsSync(filePath)) return false
+  try {
+    return readFileSync(filePath, "utf8").trim().length > 0
+  } catch {
+    return true
+  }
+}
+
 function selectConfigPath(directory: string, name: ConfigFileName) {
   const jsoncPath = jsoncConfigPath(directory, name)
   const jsonPath = jsonConfigPath(directory, name)
+  if (name === "tui") return existsSync(jsoncPath) || !hasConfigFileContent(jsonPath) ? jsoncPath : jsonPath
   return existsSync(jsoncPath) || !existsSync(jsonPath) ? jsoncPath : jsonPath
 }
 
@@ -59,7 +69,7 @@ export function locateProjectConfig(cwd = process.cwd(), home = os.homedir(), na
     if (existsSync(jsoncPath)) {
       return { scope: "project", path: jsoncPath, exists: true, format: "jsonc", ocfgDataPath: getDefaultOcfgDataPath(home) }
     }
-    if (existsSync(jsonPath)) {
+    if (name === "tui" ? hasConfigFileContent(jsonPath) : existsSync(jsonPath)) {
       return { scope: "project", path: jsonPath, exists: true, format: "json", ocfgDataPath: getDefaultOcfgDataPath(home) }
     }
 

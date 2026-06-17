@@ -21,6 +21,13 @@ describe("config reader", () => {
     expect(doc.diagnostics).toEqual([])
   })
 
+  test("treats empty existing config as an empty object", async () => {
+    const doc = await readConfig(await tempTarget(""))
+    expect(doc.data).toEqual({})
+    expect(doc.text).toBe("")
+    expect(doc.diagnostics).toEqual([])
+  })
+
   test("parses jsonc with comments", async () => {
     const doc = await readConfig(await tempTarget('{ // comment\n "model": "a/b",\n }'))
     expect(doc.data.model).toBe("a/b")

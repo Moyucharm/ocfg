@@ -22,6 +22,15 @@ export async function readConfig(target: ConfigTarget): Promise<ConfigDocument> 
   }
 
   const text = await readFile(target.path, "utf8")
+  if (!text.trim()) {
+    return {
+      target,
+      text,
+      data: {},
+      diagnostics: [],
+    }
+  }
+
   const errors: ParseError[] = []
   const data = parse(text, errors, { allowTrailingComma: true, disallowComments: false })
   const diagnostics = parseErrorsToDiagnostics(errors)
