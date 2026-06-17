@@ -5,7 +5,7 @@ import { applyPermissionEdit, applyPermissionText, type PermissionEdit } from ".
 import { createConfigDiff } from "../core/diff.js"
 import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
-import { validateConfig } from "../core/schema-validator.js"
+import { validateConfig, validateTuiConfig } from "../core/schema-validator.js"
 import { defaultSecretFilePath, restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
 import { writeConfigSafely } from "../core/config-writer.js"
 import { enableExaSearchPermissions, OPENCODE_EXA_ENV } from "../core/search-toggle.js"
@@ -13,6 +13,7 @@ import { writeUserEnvVar, type UserEnvWriteResult } from "../core/user-env.js"
 import { addModel, addProvider, deleteModel, deleteProvider, findModelReferenceKeys, findModelReferences, findProviderReferences, updateModel, updateProvider } from "../core/provider-editor.js"
 import { disableLocalPlugin, enableLocalPlugin, installLocalPlugin, type LocalPluginItem } from "../core/local-plugin-manager.js"
 import { prepareNpmPluginStateChange, removeDisabledNpmPluginState } from "../core/npm-plugin-state.js"
+import { preparePluginInstallWrites, pluginSchemaForKind } from "../core/plugin-installer.js"
 import { deletePlugin, disablePlugin, enablePlugin, updatePluginOptions, type PluginListItem, type PluginOptions } from "../core/plugin-editor.js"
 import { applyConfigEdit, applyConfigEdits, applyModelEdit, applyProviderEdit } from "../core/jsonc-editor.js"
 import {
@@ -212,6 +213,13 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
     navigate("diff-review")
   }
 
+  function pluginInstallDiff(writes: NonNullable<DiffReviewState["pluginInstallWrites"]>) {
+    return writes.map((write) => {
+      const beforeText = write.document.target.exists ? write.document.text : ""
+      return `${write.target.path}\n${createConfigDiff(beforeText, write.nextText)}`
+    }).join("\n\n")
+  }
+
   function closeDiffReview() {
     if (!diffReview.completed) {
       goBack(diffReturnRoute)
@@ -333,8 +341,40 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
   }
 
   async function commitPreparedWrite(review: DiffReviewState): Promise<DiffReviewState> {
+    if (review.pluginInstallWrites) {
+      const validations = await Promise.all(review.pluginInstallWrites.map((write) => write.kind === "tui" ? validateTuiConfig(write.nextConfig) : validateConfig(write.nextConfig, { relaxModelEnum: true })))
+      const diagnostics = validations.flatMap((validation) => validation.diagnostics)
+      if (diagnostics.length > 0) return { ...review, diagnostics, error: diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
+
+      const results = []
+      const rollbacks: Array<() => Promise<void>> = []
+      try {
+        for (let index = 0; index < review.pluginInstallWrites.length; index += 1) {
+          const write = review.pluginInstallWrites[index]
+          if (!write || write.mode === "noop") continue
+          const rollback = review.pluginInstallSpec ? await prepareNpmPluginStateChange({ action: "remove-disabled", target: write.target, packageName: review.pluginInstallSpec }) : undefined
+          if (rollback) rollbacks.push(rollback)
+          const result = await writeConfigSafely({
+            document: write.document,
+            nextConfig: write.nextConfig,
+            nextText: write.nextText,
+            validate: () => validations[index] ?? { valid: true, diagnostics: [] },
+          })
+          if (result.diagnostics.length > 0) {
+            for (const rollbackWrite of [...rollbacks].reverse()) await rollbackWrite()
+            return { ...review, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
+          }
+          results.push(result)
+        }
+        return { ...review, results, result: results[0], completed: true }
+      } catch (caught) {
+        for (const rollback of [...rollbacks].reverse()) await rollback()
+        return { ...review, error: caught instanceof Error ? caught.message : String(caught) }
+      }
+    }
+
     if (!review.document || !review.nextConfig || !review.nextText) return { ...review, error: translate(tuiPreferences.language, "diff.noPendingWrite") }
-    const validation = await validateConfig(review.nextConfig, { relaxModelEnum: true })
+    const validation = review.configKind === "tui" ? await validateTuiConfig(review.nextConfig) : await validateConfig(review.nextConfig, { relaxModelEnum: true })
     if (validation.diagnostics.length > 0) {
       return { ...review, diagnostics: validation.diagnostics, error: validation.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
     }
@@ -353,7 +393,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document: review.document,
         nextConfig: review.nextConfig,
         nextText: review.nextText,
-        validate: (nextConfig) => validateConfig(nextConfig, { relaxModelEnum: true }),
+        validate: (nextConfig) => review.configKind === "tui" ? validateTuiConfig(nextConfig) : validateConfig(nextConfig, { relaxModelEnum: true }),
       })
       if (result.diagnostics.length > 0) {
         if (secretSnapshot) await restoreSecretFile(secretSnapshot)
@@ -493,20 +533,20 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginAdd(packageName: string) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
-      const document = await readConfig(target)
-      const nextConfig = enablePlugin(document.data, packageName)
-      const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
+      const writes = await preparePluginInstallWrites({
+        spec: packageName,
+        scope: config.scope,
+        configPath: config.target?.path,
+      })
       openDiffReview({
-        targetPath: target.path,
-        diff: createConfigDiff(document.target.exists ? document.text : "", nextText),
-        document,
-        nextConfig,
-        nextText,
-        npmPluginState: { action: "remove-disabled", target, packageName },
+        targetPath: writes.map((write) => write.target.path).join(", "),
+        diff: pluginInstallDiff(writes),
+        pluginInstallSpec: packageName,
+        pluginInstallWrites: writes,
       }, "plugin-add", "plugin-list")
     } catch (caught) {
-      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-add")
+      const message = `${caught instanceof Error ? caught.message : String(caught)} ${translate(tuiPreferences.language, "plugin.installTargetHint")}`
+      openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: message }, "plugin-add")
     }
   }
 
@@ -522,7 +562,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginOptions(packageName: string, options: PluginOptions) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
+      const target = selectedPlugin?.packageName === packageName && selectedPlugin.configTarget ? selectedPlugin.configTarget : config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
       const nextConfig = updatePluginOptions(document.data, packageName, { options })
       const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
@@ -532,6 +572,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document,
         nextConfig,
         nextText,
+        configKind: selectedPlugin?.configKind,
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
@@ -540,7 +581,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginClearOptions(packageName: string) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
+      const target = selectedPlugin?.packageName === packageName && selectedPlugin.configTarget ? selectedPlugin.configTarget : config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
       const nextConfig = updatePluginOptions(document.data, packageName, { clearOptions: true })
       const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
@@ -550,6 +591,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document,
         nextConfig,
         nextText,
+        configKind: selectedPlugin?.configKind,
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
@@ -558,7 +600,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginDisable(plugin: PluginListItem) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
+      const target = plugin.configTarget ?? config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
       const nextConfig = disablePlugin(document.data, plugin.packageName)
       const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
@@ -568,6 +610,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document,
         nextConfig,
         nextText,
+        configKind: plugin.configKind,
         npmPluginState: { action: "disable", target, plugin: { packageName: plugin.packageName, options: plugin.options } },
       }, "plugin-list")
     } catch (caught) {
@@ -577,9 +620,9 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginEnable(plugin: PluginListItem) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
+      const target = plugin.configTarget ?? config.target ?? locateConfig({ scope: config.scope })
       const document = await readConfig(target)
-      const nextConfig = enablePlugin(document.data, plugin.packageName, plugin.options)
+      const nextConfig = enablePlugin(document.data, plugin.packageName, plugin.options, pluginSchemaForKind(plugin.configKind ?? "server"))
       const nextText = applyConfigEdit(document, ["plugin"], nextConfig.plugin)
       openDiffReview({
         targetPath: target.path,
@@ -587,6 +630,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document,
         nextConfig,
         nextText,
+        configKind: plugin.configKind,
         npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
@@ -596,7 +640,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
   async function reviewPluginDelete(plugin: PluginListItem) {
     try {
-      const target = config.target ?? locateConfig({ scope: config.scope })
+      const target = plugin.configTarget ?? config.target ?? locateConfig({ scope: config.scope })
       if (plugin.status === "disabled") {
         await withSaving(() => removeDisabledNpmPluginState(target, plugin.packageName))
         setMessage(translate(tuiPreferences.language, "plugin.deleted", { id: plugin.packageName }))
@@ -613,6 +657,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         document,
         nextConfig,
         nextText,
+        configKind: plugin.configKind,
         npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
       }, "plugin-edit", "plugin-list")
     } catch (caught) {

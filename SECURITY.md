@@ -74,7 +74,7 @@ CLI mutating flows support `--dry-run` to validate and print the planned diff wi
 
 Real writes validate the complete next config before writing.
 
-Real writes create a timestamped backup beside an existing target config before replacing it.
+Real writes create a timestamped backup under the ocfg data directory, defaulting to `~/.config/ocfg/backups/configs/`, before replacing an existing target config.
 
 Real writes use a temporary file followed by atomic rename.
 
@@ -92,7 +92,7 @@ The CLI accepts `--confirm-token` for referenced deletes.
 
 ## Backups And Recovery
 
-Backups are written beside the target config file with a timestamped `.bak` suffix.
+Config backups are written under the ocfg data directory, defaulting to `~/.config/ocfg/backups/configs/`, with a timestamped `.bak` suffix. OCfg keeps the latest 10 backups per config file path.
 
 If a write fails after a managed secret file was changed, the tool attempts to restore the previous secret file snapshot.
 

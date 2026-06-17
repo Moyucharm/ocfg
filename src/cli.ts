@@ -94,6 +94,7 @@ addMutatingOptions(add.command("provider <provider-id>").description("Add a prov
 
 addMutatingOptions(add.command("plugin <package-name>").description("Add an OpenCode npm plugin."))
   .option("--options-json <json>", "Plugin options object as JSON")
+  .option("--plugin-target <target>", "Plugin config target: server, tui, or both", "server")
   .action(async (packageName, options) => {
     await runAction(async () => {
       const { addPluginCommand } = await import("./commands/plugin.js")
@@ -138,6 +139,7 @@ addMutatingOptions(program.command("install").description("Install OpenCode plug
   .option("--local", "Install from a local JavaScript or TypeScript plugin file", false)
   .option("--as <filename>", "Destination filename for --local installs")
   .option("--options-json <json>", "Plugin options object as JSON for npm installs")
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (plugin, options) => {
     await runAction(async () => {
       const { installPluginCommand } = await import("./commands/plugin.js")
@@ -148,6 +150,7 @@ addMutatingOptions(program.command("install").description("Install OpenCode plug
 addMutatingOptions(program.command("enable").description("Enable OpenCode plugins.").command("plugin <plugin>").description("Enable an OpenCode npm or local plugin."))
   .option("--local", "Enable a local plugin file by renaming it from .disabled", false)
   .option("--options-json <json>", "Plugin options object as JSON for npm plugins")
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (plugin, options) => {
     await runAction(async () => {
       const { enablePluginCommand } = await import("./commands/plugin.js")
@@ -157,6 +160,7 @@ addMutatingOptions(program.command("enable").description("Enable OpenCode plugin
 
 addMutatingOptions(program.command("disable").description("Disable OpenCode plugins.").command("plugin <plugin>").description("Disable an OpenCode npm or local plugin."))
   .option("--local", "Disable a local plugin file by adding a .disabled suffix", false)
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (plugin, options) => {
     await runAction(async () => {
       const { disablePluginCommand } = await import("./commands/plugin.js")
@@ -198,6 +202,7 @@ addMutatingOptions(edit.command("model <provider-id/model-id>").description("Edi
 addMutatingOptions(edit.command("plugin <package-name>").description("Edit an OpenCode npm plugin."))
   .option("--options-json <json>", "Replace plugin options with a JSON object")
   .option("--clear-options", "Remove plugin options and store the package as a string", false)
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (packageName, options) => {
     await runAction(async () => {
       const { editPluginCommand } = await import("./commands/plugin.js")
@@ -255,6 +260,7 @@ addMutatingOptions(del.command("model <provider-id/model-id>").description("Dele
   })
 
 addMutatingOptions(del.command("plugin <package-name>").description("Delete an OpenCode npm plugin."))
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (packageName, options) => {
     await runAction(async () => {
       const { deletePluginCommand } = await import("./commands/plugin.js")

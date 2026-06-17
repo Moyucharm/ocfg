@@ -45,6 +45,8 @@ function invalid(): ValidationResult {
   return { valid: false, diagnostics: [{ severity: "high", source: "schema", path: "/", message: "invalid" }] }
 }
 
+const serverPluginManifest = async () => [{ kind: "server" as const }]
+
 async function tempFile(name = "opencode.jsonc") {
   const dir = await mkdtemp(path.join(os.tmpdir(), "oc-provider-editor-commands-"))
   return path.join(dir, name)
@@ -433,6 +435,28 @@ describe("commands", () => {
     expect(output.localPlugins).toEqual([])
   })
 
+  test("lists configured server and tui npm plugins", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-list-targets-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["server-plugin"]
+}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "plugin": ["tui-plugin"]
+}
+`, "utf8")
+
+    await listPluginsCommand({ configPath: serverPath, json: true })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string; configKind: string }) => [plugin.packageName, plugin.configKind])).toEqual([
+      ["server-plugin", "server"],
+      ["tui-plugin", "tui"],
+    ])
+  })
+
   test("adds edits and deletes plugin config", async () => {
     const filePath = await tempFile()
 
@@ -449,8 +473,8 @@ describe("commands", () => {
   test("installs enables and disables npm plugins", async () => {
     const filePath = await tempFile()
 
-    await installPluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
-    await installPluginCommand("opencode-wakatime", { configPath: filePath, optionsJson: "{\"enabled\":true}", validate: valid })
+    await installPluginCommand("opencode-wakatime", { configPath: filePath, validate: valid, resolveManifest: serverPluginManifest })
+    await installPluginCommand("opencode-wakatime", { configPath: filePath, optionsJson: "{\"enabled\":true}", validate: valid, resolveManifest: serverPluginManifest })
     expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { enabled: true }]])
 
     await disablePluginCommand("opencode-wakatime", { configPath: filePath, validate: valid })
@@ -468,6 +492,188 @@ describe("commands", () => {
     await listPluginsCommand({ configPath: filePath, json: true })
     output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
     expect(output.plugins).toEqual([])
+  })
+
+  test("installs npm plugins into server and tui configs based on manifest targets", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-targets-"))
+    const resolveManifest = async () => [
+      { kind: "server" as const, options: { custom: true } },
+      { kind: "tui" as const, options: { compact: true } },
+    ]
+
+    await installPluginCommand("acme@1.2.3", { configScope: "global", home, validate: valid, resolveManifest })
+
+    const configDir = path.join(home, ".config", "opencode")
+    expect(parse(await readFile(path.join(configDir, "opencode.jsonc"), "utf8")).plugin).toEqual([["acme@1.2.3", { custom: true }]])
+    expect(parse(await readFile(path.join(configDir, "tui.jsonc"), "utf8")).plugin).toEqual([["acme@1.2.3", { compact: true }]])
+  })
+
+  test("installs npm plugins into tui config with explicit target fallback", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-tui-"))
+
+    await installPluginCommand("tui-only", { configScope: "global", home, pluginTarget: "tui", validate: valid })
+
+    const configDir = path.join(home, ".config", "opencode")
+    expect(parse(await readFile(path.join(configDir, "tui.jsonc"), "utf8")).plugin).toEqual(["tui-only"])
+    await expect(stat(path.join(configDir, "opencode.jsonc"))).rejects.toThrow()
+  })
+
+  test("edits disables enables and deletes tui npm plugins by auto target", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-tui-manage-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": []
+}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "theme": "opencode",
+  "plugin": ["tui-plugin"]
+}
+`, "utf8")
+
+    await editPluginCommand("tui-plugin", { configPath: serverPath, optionsJson: "{\"compact\":true}", validate: valid })
+    expect(parse(await readFile(tuiPath, "utf8")).plugin).toEqual([["tui-plugin", { compact: true }]])
+    expect(parse(await readFile(serverPath, "utf8")).plugin).toEqual([])
+
+    await disablePluginCommand("tui-plugin", { configPath: serverPath, validate: valid })
+    expect(parse(await readFile(tuiPath, "utf8")).plugin).toEqual([])
+
+    await listPluginsCommand({ configPath: serverPath, json: true })
+    let output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string; status: string; configKind: string }) => [plugin.packageName, plugin.status, plugin.configKind])).toEqual([["tui-plugin", "disabled", "tui"]])
+
+    await enablePluginCommand("tui-plugin", { configPath: serverPath, validate: valid })
+    expect(parse(await readFile(tuiPath, "utf8")).plugin).toEqual([["tui-plugin", { compact: true }]])
+
+    await disablePluginCommand("tui-plugin", { configPath: serverPath, validate: valid })
+    await deletePluginCommand("tui-plugin", { configPath: serverPath, validate: valid })
+    await listPluginsCommand({ configPath: serverPath, json: true })
+    output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins).toEqual([])
+  })
+
+  test("requires explicit target for ambiguous plugin management", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-ambiguous-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+    await writeFile(path.join(dir, "tui.jsonc"), `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+
+    await expect(editPluginCommand("shared-plugin", { configPath: serverPath, optionsJson: "{}", validate: valid })).rejects.toThrow("multiple plugin targets")
+  })
+
+  test("enables explicit tui target with tui schema", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-tui-schema-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{}
+`, "utf8")
+    await writeFile(tuiPath, `{}
+`, "utf8")
+
+    await enablePluginCommand("tui-plugin", { configPath: serverPath, pluginTarget: "tui", validate: valid })
+
+    const tui = parse(await readFile(tuiPath, "utf8"))
+    expect(tui.$schema).toBe("https://opencode.ai/tui.json")
+    expect(tui.plugin).toEqual(["tui-plugin"])
+  })
+
+  test("explicit plugin target does not parse unrelated sibling config", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-explicit-target-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["server-plugin"]
+}
+`, "utf8")
+    await writeFile(tuiPath, "{", "utf8")
+
+    await disablePluginCommand("server-plugin", { configPath: serverPath, pluginTarget: "server", validate: valid })
+
+    expect(parse(await readFile(serverPath, "utf8")).plugin).toEqual([])
+  })
+
+  test("explicit custom tui config path is not remapped", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-custom-tui-"))
+    const customTuiPath = path.join(dir, "custom-tui.jsonc")
+
+    await enablePluginCommand("tui-plugin", { configPath: customTuiPath, pluginTarget: "tui", validate: valid })
+
+    const tui = parse(await readFile(customTuiPath, "utf8"))
+    expect(tui.$schema).toBe("https://opencode.ai/tui.json")
+    expect(tui.plugin).toEqual(["tui-plugin"])
+    await expect(stat(path.join(dir, "tui.jsonc"))).rejects.toThrow()
+  })
+
+  test("plugin install dry-run previews multiple targets without creating files", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-dry-run-"))
+    const resolveManifest = async () => [{ kind: "server" as const }, { kind: "tui" as const }]
+
+    await installPluginCommand("acme", { configScope: "global", home, dryRun: true, validate: valid, resolveManifest })
+
+    const configDir = path.join(home, ".config", "opencode")
+    await expect(stat(path.join(configDir, "opencode.jsonc"))).rejects.toThrow()
+    await expect(stat(path.join(configDir, "tui.jsonc"))).rejects.toThrow()
+    expect(log.mock.calls.some((call) => String(call[0]).includes("Dry run"))).toBe(true)
+  })
+
+  test("delete plugin both emits one json document for enabled and disabled targets", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-delete-json-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+    await disablePluginCommand("shared-plugin", { configPath: serverPath, pluginTarget: "tui", validate: valid })
+    log.mockClear()
+
+    await deletePluginCommand("shared-plugin", { configPath: serverPath, pluginTarget: "both", json: true, validate: valid })
+
+    expect(log.mock.calls).toHaveLength(1)
+    const output = JSON.parse(log.mock.calls[0]?.[0] as string)
+    expect(output.results).toHaveLength(2)
+    expect(output.results.map((result: { kind: string }) => result.kind)).toEqual(["server", "tui"])
+
+    log.mockClear()
+    await listPluginsCommand({ configPath: serverPath, json: true })
+    expect(JSON.parse(log.mock.calls[0]?.[0] as string).plugins).toEqual([])
+  })
+
+  test("delete plugin both keeps disabled state when enabled target validation fails", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-delete-rollback-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+    await disablePluginCommand("shared-plugin", { configPath: serverPath, pluginTarget: "tui", validate: valid })
+
+    await deletePluginCommand("shared-plugin", { configPath: serverPath, pluginTarget: "both", validate: invalid })
+
+    expect(parse(await readFile(serverPath, "utf8")).plugin).toEqual(["shared-plugin"])
+    log.mockClear()
+    await listPluginsCommand({ configPath: serverPath, json: true })
+    const output = JSON.parse(log.mock.calls[0]?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string; status: string; configKind: string }) => [plugin.packageName, plugin.status, plugin.configKind])).toEqual([
+      ["shared-plugin", "enabled", "server"],
+      ["shared-plugin", "disabled", "tui"],
+    ])
   })
 
   test("enable plugin does not restore stale disabled options over enabled config", async () => {

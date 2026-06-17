@@ -2,6 +2,8 @@ import type { ConfigDocument } from "../core/types.js"
 import type { ConfigScope, ConfigTarget, Diagnostic, EndpointKind, SecretRef } from "../core/types.js"
 import type { WriteConfigSafelyResult } from "../core/config-writer.js"
 import type { NpmPluginStateChange } from "../core/npm-plugin-state.js"
+import type { PreparedPluginInstallWrite } from "../core/plugin-installer.js"
+import type { PluginHostKind } from "../core/plugin-installer.js"
 
 export type TuiRoute =
   | "home"
@@ -70,6 +72,7 @@ export type DiffReviewState = {
   nextConfig?: Record<string, unknown>
   nextText?: string
   result?: WriteConfigSafelyResult
+  results?: WriteConfigSafelyResult[]
   secretFile?: {
     path: string
     value: string
@@ -82,6 +85,9 @@ export type DiffReviewState = {
     path: string
   }
   npmPluginState?: NpmPluginStateChange
+  configKind?: PluginHostKind
+  pluginInstallSpec?: string
+  pluginInstallWrites?: PreparedPluginInstallWrite[]
   promptFilePath?: string
   error?: string
   completed?: boolean

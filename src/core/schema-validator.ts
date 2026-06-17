@@ -17,9 +17,11 @@ export type SchemaValidationResult = {
 }
 
 const DEFAULT_SCHEMA_URL = "https://opencode.ai/config.json"
+const DEFAULT_TUI_SCHEMA_URL = "https://opencode.ai/tui.json"
 const DEFAULT_MODEL_SCHEMA_URL = "https://models.dev/model-schema.json"
 
 let cachedValidator: ValidateFunction | undefined
+let cachedTuiValidator: ValidateFunction | undefined
 
 type AjvInstance = {
   addSchema: (schema: Record<string, unknown>, key?: string) => AjvInstance
@@ -57,6 +59,17 @@ export async function loadOpenCodeSchema(options: SchemaValidatorOptions = {}) {
   return (await response.json()) as Record<string, unknown>
 }
 
+export async function loadOpenCodeTuiSchema(options: SchemaValidatorOptions = {}) {
+  if (options.schema) return options.schema
+
+  const fetchImpl = options.fetchImpl ?? fetch
+  const response = await fetchImpl(options.schemaUrl ?? DEFAULT_TUI_SCHEMA_URL, {
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`Failed to fetch OpenCode TUI schema: HTTP ${response.status}`)
+  return (await response.json()) as Record<string, unknown>
+}
+
 async function loadModelSchema(options: SchemaValidatorOptions = {}) {
   const relaxModelEnum = options.relaxModelEnum ?? true
   if (options.modelSchema) return relaxModelEnum ? relaxModelSchema(options.modelSchema) : options.modelSchema
@@ -91,11 +104,33 @@ export async function createSchemaValidator(options: SchemaValidatorOptions = {}
   return validate
 }
 
+export async function createTuiSchemaValidator(options: SchemaValidatorOptions = {}) {
+  if (!options.schema && cachedTuiValidator) return cachedTuiValidator
+
+  const schema = await loadOpenCodeTuiSchema(options)
+  const ajv = createAjv()
+  const validate = ajv.compile(schema)
+  if (!options.schema) cachedTuiValidator = validate
+  return validate
+}
+
 export async function validateConfig(
   config: Record<string, unknown>,
   options: SchemaValidatorOptions = {},
 ): Promise<SchemaValidationResult> {
   const validate = await createSchemaValidator(options)
+  const valid = validate(config)
+  return {
+    valid,
+    diagnostics: valid ? [] : (validate.errors ?? []).map(normalizeError),
+  }
+}
+
+export async function validateTuiConfig(
+  config: Record<string, unknown>,
+  options: SchemaValidatorOptions = {},
+): Promise<SchemaValidationResult> {
+  const validate = await createTuiSchemaValidator(options)
   const valid = validate(config)
   return {
     valid,

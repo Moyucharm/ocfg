@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react"
 import { Text } from "ink"
-import { locateConfig } from "../../core/config-locator.js"
 import { readConfig } from "../../core/config-reader.js"
 import { listLocalPlugins, type LocalPluginItem } from "../../core/local-plugin-manager.js"
 import { listNpmPlugins } from "../../core/npm-plugin-state.js"
+import { locatePluginHostConfig } from "../../core/plugin-installer.js"
 import type { PluginListItem } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
@@ -38,10 +38,11 @@ export function PluginListScreen(props: {
     {
       title: t("plugin.npmPlugins"),
       items: plugins.map((plugin) => ({
-        id: `npm:${plugin.packageName}`,
+        id: `npm:${plugin.configKind ?? "server"}:${plugin.packageName}`,
         label: plugin.packageName,
-        meta: t(plugin.status === "enabled" ? "plugin.enabled" : "plugin.disabled"),
+        meta: `${t(plugin.status === "enabled" ? "plugin.enabled" : "plugin.disabled")} ${plugin.configKind ?? "server"}`,
         tone: plugin.status === "enabled" ? "success" : "danger",
+        description: plugin.configTarget?.path,
       })),
     },
     {
@@ -68,8 +69,8 @@ export function PluginListScreen(props: {
   function selectedPlugin(index = selected) {
     const item = selectedItem(index)
     if (item?.kind !== "item" || !item.item.id.startsWith("npm:")) return undefined
-    const packageName = item.item.id.slice("npm:".length)
-    return plugins.find((plugin) => plugin.packageName === packageName)
+    const [, configKind, packageName] = item.item.id.match(/^npm:([^:]+):(.+)$/) ?? []
+    return plugins.find((plugin) => plugin.packageName === packageName && (plugin.configKind ?? "server") === configKind)
   }
 
   function selectedLocalPlugin(index = selected) {
@@ -118,9 +119,17 @@ export function PluginListScreen(props: {
       setLoading(true)
       setError(undefined)
       try {
-        const target = props.selection.target ?? locateConfig({ scope: props.selection.scope })
+        const target = locatePluginHostConfig({ scope: props.selection.scope, configPath: props.selection.target?.path }, "server")
+        const tuiTarget = locatePluginHostConfig({ scope: props.selection.scope, configPath: props.selection.target?.path }, "tui")
         const document = await readConfig(target)
-        const nextPlugins = await listNpmPlugins(document.data, target)
+        if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+        const serverPlugins = (await listNpmPlugins(document.data, target)).map((plugin) => ({ ...plugin, configKind: "server" as const, configTarget: target }))
+        const tuiDocument = tuiTarget.exists ? await readConfig(tuiTarget) : undefined
+        if (tuiDocument && tuiDocument.diagnostics.length > 0) throw new Error(tuiDocument.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+        const tuiPlugins = tuiDocument
+          ? (await listNpmPlugins(tuiDocument.data, tuiTarget)).map((plugin) => ({ ...plugin, configKind: "tui" as const, configTarget: tuiTarget }))
+          : []
+        const nextPlugins = [...serverPlugins, ...tuiPlugins]
         const nextLocalPlugins = await listLocalPlugins({ scope: props.selection.scope })
         if (!active) return
         setPlugins(nextPlugins)

@@ -225,6 +225,7 @@ export const englishText = {
   "plugin.failed": "Failed to load plugins: {message}",
   "plugin.localInstalled": "Installed local plugin: {path}",
   "plugin.deleted": "Deleted plugin: {id}",
+  "plugin.installTargetHint": "If target detection fails, install from the CLI with --plugin-target server, tui, or both.",
 
   "prompt.title": "Manage prompts",
   "prompt.mode.rules": "Shared rules (AGENTS.md)",
@@ -612,6 +613,7 @@ export const chineseText = {
   "plugin.failed": "加载插件失败：{message}",
   "plugin.localInstalled": "已安装本地插件：{path}",
   "plugin.deleted": "已删除插件：{id}",
+  "plugin.installTargetHint": "如果目标检测失败，请在 CLI 中使用 --plugin-target server、tui 或 both 指定目标。",
 
   "prompt.title": "管理提示词",
   "prompt.mode.rules": "通用规则（AGENTS.md）",

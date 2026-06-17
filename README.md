@@ -95,6 +95,8 @@ Install an OpenCode npm plugin:
 ocfg install plugin opencode-wakatime
 ```
 
+`install plugin` reads npm package metadata and writes server plugins to `opencode.jsonc`, TUI plugins to `tui.jsonc`, or both when a package exposes both targets. If metadata cannot be read, choose explicitly with `--plugin-target server`, `--plugin-target tui`, or `--plugin-target both`.
+
 Install a local plugin file:
 
 ```bash
@@ -217,9 +219,11 @@ ocfg list plugins [--config-scope global|project] [--config-path path] [--json]
 Install or enable an npm plugin:
 
 ```bash
-ocfg install plugin <package-name> [--options-json <json>] [--dry-run]
-ocfg enable plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg install plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
+ocfg enable plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
 ```
+
+`ocfg install plugin` defaults to `--plugin-target auto`, detecting target files from package `exports["./server"]`, `main`, `exports["./tui"]`, and `oc-themes` metadata. Use `--plugin-target server|tui|both` to bypass auto-detection.
 
 Install a local plugin file:
 
@@ -237,20 +241,20 @@ ocfg enable plugin <filename-or-name> --local [--config-scope global|project] [-
 Add a plugin using the older alias:
 
 ```bash
-ocfg add plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg add plugin <package-name> [--plugin-target server|tui|both] [--options-json <json>] [--dry-run]
 ```
 
 Edit a plugin:
 
 ```bash
-ocfg edit plugin <package-name> [--options-json <json> | --clear-options] [--dry-run]
+ocfg edit plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json> | --clear-options] [--dry-run]
 ```
 
 Disable or delete an npm plugin:
 
 ```bash
-ocfg disable plugin <package-name> [--dry-run]
-ocfg delete plugin <package-name> [--dry-run]
+ocfg disable plugin <package-name> [--plugin-target auto|server|tui|both] [--dry-run]
+ocfg delete plugin <package-name> [--plugin-target auto|server|tui|both] [--dry-run]
 ```
 
 List AGENTS.md rules, configured instructions, prompt files, and bundled prompt templates:
@@ -345,7 +349,7 @@ TUI writes usually show a diff and require explicit confirmation before writing.
 
 CLI writes support `--dry-run` to print the planned diff and validate without creating, modifying, or deleting files.
 
-Real writes create a timestamped backup next to the target file when the target already exists.
+Real writes create a timestamped backup under the ocfg data directory, defaulting to `~/.config/ocfg/backups/configs/`, when the target already exists. OCfg keeps the latest 10 backups per config file path.
 
 Real writes go through a temporary file and atomic rename.
 

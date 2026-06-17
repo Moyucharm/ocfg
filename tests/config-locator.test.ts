@@ -30,6 +30,14 @@ describe("config locator", () => {
     expect(target.exists).toBe(true)
   })
 
+  test("locates global tui config alongside opencode config", async () => {
+    const home = await tempDir()
+    const target = locateGlobalConfig(home, "tui")
+
+    expect(target.path).toBe(path.join(home, ".config", "opencode", "tui.jsonc"))
+    expect(target.exists).toBe(false)
+  })
+
   test("finds project config by walking upward", async () => {
     const root = await tempDir()
     const nested = path.join(root, "a", "b")
@@ -41,10 +49,30 @@ describe("config locator", () => {
     expect(target.exists).toBe(true)
   })
 
+  test("finds project tui config by walking upward", async () => {
+    const root = await tempDir()
+    const nested = path.join(root, "a", "b")
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(path.join(root, "tui.jsonc"), "{}")
+
+    const target = locateProjectConfig(nested, undefined, "tui")
+    expect(target.path).toBe(path.join(root, "tui.jsonc"))
+    expect(target.exists).toBe(true)
+  })
+
   test("custom path overrides scope", async () => {
     const root = await tempDir()
     const custom = path.join(root, "custom.jsonc")
     const target = locateConfig({ configPath: custom, scope: "global" })
+    expect(target.scope).toBe("custom")
+    expect(target.path).toBe(custom)
+  })
+
+  test("custom path stays exact for named config lookup", async () => {
+    const root = await tempDir()
+    const custom = path.join(root, "custom-tui.jsonc")
+    const target = locateConfig({ configPath: custom, scope: "global" }, "tui")
+
     expect(target.scope).toBe("custom")
     expect(target.path).toBe(custom)
   })

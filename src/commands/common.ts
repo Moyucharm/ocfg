@@ -94,8 +94,9 @@ export async function writeMutation(input: {
     value: string
   }
   beforeWrite?: () => Promise<(() => Promise<void>) | void>
+  validateWrite?: (config: Record<string, unknown>) => Promise<ValidationResult> | ValidationResult
 }) {
-  const validation = await validateForWrite(input.nextConfig, input.options.validate)
+  const validation = input.validateWrite ? await input.validateWrite(input.nextConfig) : await validateForWrite(input.nextConfig, input.options.validate)
   let secretSnapshot: Awaited<ReturnType<typeof snapshotSecretFile>> | undefined
   let rollbackBeforeWrite: (() => Promise<void>) | void | undefined
   try {

@@ -139,13 +139,14 @@ export function DiffReviewScreen(props: {
   })
 
   if (props.review.completed) {
+    const results = props.review.results ?? (props.review.result ? [props.review.result] : [])
     return (
       <Box flexDirection="column">
         <Header title={t("diff.configWritten")} />
         <Text> </Text>
         <Section title={t("diff.result")} />
-        <FieldRow label={t("diff.target")} value={props.review.result?.targetPath ?? props.review.targetPath} />
-        {props.review.result?.backupPath ? <FieldRow label={t("diff.backup")} value={props.review.result.backupPath} /> : null}
+        <FieldRow label={t("diff.target")} value={results.length > 0 ? results.map((result) => result.targetPath).join(", ") : props.review.targetPath} />
+        {results.map((result) => result.backupPath ? <FieldRow key={result.backupPath} label={t("diff.backup")} value={result.backupPath} /> : null)}
         {props.review.secretFilePath ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFilePath} /> : null}
         {props.review.promptFilePath ? <FieldRow label={t("diff.promptFile")} value={props.review.promptFilePath} /> : null}
         <Text> </Text>

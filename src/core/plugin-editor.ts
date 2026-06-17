@@ -1,4 +1,5 @@
 import { isRecord } from "./object-utils.js"
+import type { ConfigTarget } from "./types.js"
 
 export class PluginEditorError extends Error {}
 
@@ -12,14 +13,16 @@ export type PluginListItem = {
   options?: PluginOptions
   kind: "package" | "package-with-options"
   status: PluginStatus
+  configKind?: "server" | "tui"
+  configTarget?: ConfigTarget
 }
 
 function cloneConfig(config: Record<string, unknown>): Record<string, unknown> {
   return structuredClone(config)
 }
 
-function ensureSchema(config: Record<string, unknown>) {
-  if (!config.$schema) config.$schema = "https://opencode.ai/config.json"
+function ensureSchema(config: Record<string, unknown>, schema = "https://opencode.ai/config.json") {
+  if (!config.$schema) config.$schema = schema
 }
 
 export function normalizePluginPackage(value: string) {
@@ -85,20 +88,20 @@ export function pluginItemToEntry(plugin: Pick<PluginListItem, "packageName" | "
   return pluginEntry(plugin.packageName, plugin.options)
 }
 
-export function addPlugin(config: Record<string, unknown>, packageValue: string, options?: PluginOptions): Record<string, unknown> {
+export function addPlugin(config: Record<string, unknown>, packageValue: string, options?: PluginOptions, schema?: string): Record<string, unknown> {
   const packageName = normalizePluginPackage(packageValue)
   const next = cloneConfig(config)
-  ensureSchema(next)
+  ensureSchema(next, schema)
   const plugins = ensurePluginArray(next)
   if (findPluginIndex(plugins, packageName) !== -1) throw new PluginEditorError(`Plugin "${packageName}" already exists`)
   plugins.push(pluginEntry(packageName, options))
   return next
 }
 
-export function enablePlugin(config: Record<string, unknown>, packageValue: string, options?: PluginOptions): Record<string, unknown> {
+export function enablePlugin(config: Record<string, unknown>, packageValue: string, options?: PluginOptions, schema?: string): Record<string, unknown> {
   const packageName = normalizePluginPackage(packageValue)
   const next = cloneConfig(config)
-  ensureSchema(next)
+  ensureSchema(next, schema)
   const plugins = ensurePluginArray(next)
   const index = findPluginIndex(plugins, packageName)
   if (index === -1) {
