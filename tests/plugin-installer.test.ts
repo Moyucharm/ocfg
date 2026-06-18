@@ -62,17 +62,25 @@ describe("plugin installer", () => {
     const tuiPath = path.join(dir, "tui.jsonc")
     const customTuiPath = path.join(dir, "custom-tui.jsonc")
 
-    expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiPath)
-    expect(locatePluginHostConfig({ configPath: tuiPath }, "server").path).toBe(serverPath)
+    expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(path.join(dir, "tui.json"))
+    expect(locatePluginHostConfig({ configPath: tuiPath }, "server").path).toBe(path.join(dir, "opencode.json"))
     expect(locatePluginHostConfig({ configPath: customTuiPath }, "tui").path).toBe(customTuiPath)
   })
 
-  test("prefers tui jsonc sibling over empty tui json", async () => {
+  test("prefers existing tui json sibling even when it is empty", async () => {
     const dir = await tempDir()
     const serverPath = path.join(dir, "opencode.jsonc")
     const tuiJsonPath = path.join(dir, "tui.json")
-    const tuiJsoncPath = path.join(dir, "tui.jsonc")
     await writeFile(tuiJsonPath, "", "utf8")
+
+    expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiJsonPath)
+  })
+
+  test("uses existing tui jsonc sibling when tui json is absent", async () => {
+    const dir = await tempDir()
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiJsoncPath = path.join(dir, "tui.jsonc")
+    await writeFile(tuiJsoncPath, "{}", "utf8")
 
     expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiJsoncPath)
   })
@@ -84,5 +92,22 @@ describe("plugin installer", () => {
     await writeFile(tuiJsonPath, "{}", "utf8")
 
     expect(locatePluginHostConfig({ configPath: serverPath }, "tui").path).toBe(tuiJsonPath)
+  })
+
+  test("uses project .opencode json files for missing plugin configs", async () => {
+    const dir = await tempDir()
+
+    expect(locatePluginHostConfig({ scope: "project", cwd: dir }, "server").path).toBe(path.join(dir, ".opencode", "opencode.json"))
+    expect(locatePluginHostConfig({ scope: "project", cwd: dir }, "tui").path).toBe(path.join(dir, ".opencode", "tui.json"))
+  })
+
+  test("anchors missing project host config to discovered .opencode directory", async () => {
+    const dir = await tempDir()
+    const child = path.join(dir, "src")
+    await mkdir(path.join(dir, ".opencode"), { recursive: true })
+    await mkdir(child, { recursive: true })
+    await writeFile(path.join(dir, ".opencode", "opencode.json"), "{}", "utf8")
+
+    expect(locatePluginHostConfig({ scope: "project", cwd: child }, "tui").path).toBe(path.join(dir, ".opencode", "tui.json"))
   })
 })

@@ -10,12 +10,15 @@ import {
   type LocalPluginMutationResult,
 } from "../core/local-plugin-manager.js"
 import { findDisabledNpmPlugin, listNpmPlugins, prepareNpmPluginStateChange, type NpmPluginStateChange } from "../core/npm-plugin-state.js"
-import { addPlugin, deletePlugin, disablePlugin, enablePlugin, findPlugin, updatePluginOptions, type PluginOptions } from "../core/plugin-editor.js"
+import { deletePlugin, disablePlugin, enablePlugin, findPlugin, updatePluginOptions, type PluginOptions } from "../core/plugin-editor.js"
 import {
   locatePluginHostConfig,
+  locatePluginHostConfigTargets,
+  packageNameForSpec,
   parsePluginTargetSelection,
   preparePluginInstallWrites,
   pluginSchemaForKind,
+  readNpmPluginManifest,
   readPluginHostConfig,
   type PluginHostKind,
   type PluginManifestResolver,
@@ -44,6 +47,11 @@ export type PluginOptionsCommandOptions = MutatingCommandOptions & {
   resolveManifest?: PluginManifestResolver
 }
 
+export type PluginListCommandOptions = ConfigCommandOptions & {
+  checkTargets?: boolean
+  resolveManifest?: PluginManifestResolver
+}
+
 type PluginInstallWriteOutput = {
   kind: PluginHostKind
   mode: PreparedPluginInstallWrite["mode"]
@@ -66,6 +74,14 @@ type PluginManagementTarget = {
   document: ConfigDocument
   existing?: PluginListItem
   disabled?: PluginListItem
+}
+
+type PluginHostListResult = {
+  kind: PluginHostKind
+  target: ConfigTarget
+  targets: ConfigTarget[]
+  plugins: PluginListItem[]
+  diagnostics: Diagnostic[]
 }
 
 type ConfigFileSnapshot = {
@@ -180,12 +196,13 @@ function kindsForSelection(selection: PluginTargetSelection): PluginHostKind[] {
 async function readPluginManagementCandidates(packageName: string, options: ConfigCommandOptions, kinds: PluginHostKind[]): Promise<PluginManagementTarget[]> {
   const targets: PluginManagementTarget[] = []
   for (const kind of kinds) {
-    const target = locatePluginHostConfig(locatorOptions(options), kind)
-    const document = await readPluginHostConfig(target)
-    if (document.diagnostics.length > 0) throw new Error(`Invalid ${pluginTargetLabel(kind)} plugin config at ${target.path}: ${document.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`)
-    const existing = findPlugin(document.data, packageName)
-    const disabled = await findDisabledNpmPlugin(target, packageName)
-    targets.push({ kind, target, document, existing, disabled })
+    for (const target of locatePluginHostConfigTargets(locatorOptions(options), kind)) {
+      const document = await readPluginHostConfig(target)
+      if (document.diagnostics.length > 0) throw new Error(`Invalid ${pluginTargetLabel(kind)} plugin config at ${target.path}: ${document.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`)
+      const existing = findPlugin(document.data, packageName)
+      const disabled = await findDisabledNpmPlugin(target, packageName)
+      targets.push({ kind, target, document, existing, disabled })
+    }
   }
   return targets
 }
@@ -197,18 +214,28 @@ function hasPluginForAction(target: PluginManagementTarget, action: PluginManage
   return target.existing !== undefined || target.disabled !== undefined
 }
 
+function primaryManagementTarget(candidates: PluginManagementTarget[], kind: PluginHostKind) {
+  return candidates.find((candidate) => candidate.kind === kind)
+}
+
 function selectedManagementTargets(candidates: PluginManagementTarget[], selection: PluginTargetSelection, action: PluginManagementAction) {
-  if (selection === "server" || selection === "tui") {
-    const target = candidates.find((candidate) => candidate.kind === selection)
-    return target ? [target] : []
+  const kinds: PluginHostKind[] = selection === "both" ? ["server", "tui"] : selection === "server" || selection === "tui" ? [selection] : []
+  const selected = candidates.filter((candidate) => kinds.includes(candidate.kind))
+  if (action === "add") return kinds.map((kind) => primaryManagementTarget(candidates, kind)).filter((target): target is PluginManagementTarget => target !== undefined)
+  if (action === "enable") {
+    const targets: PluginManagementTarget[] = []
+    for (const kind of kinds) {
+      const matches = selected.filter((candidate) => candidate.kind === kind && hasPluginForAction(candidate, action))
+      if (matches.length > 0) targets.push(...matches)
+      else {
+        const primary = primaryManagementTarget(candidates, kind)
+        if (primary) targets.push(primary)
+      }
+    }
+    return targets
   }
-
-  if (selection === "both") {
-    if (action === "add" || action === "enable" || action === "edit") return candidates
-    return candidates.filter((candidate) => hasPluginForAction(candidate, action))
-  }
-
-  return []
+  if (action === "edit" && selection === "both") return selected
+  return selected.filter((candidate) => hasPluginForAction(candidate, action))
 }
 
 async function resolvePluginManagementTargets(
@@ -235,6 +262,81 @@ async function resolvePluginManagementTargets(
   return selected
 }
 
+function dedupeHostPlugins(plugins: PluginListItem[]) {
+  const seen = new Set<string>()
+  const result: PluginListItem[] = []
+  for (const plugin of plugins) {
+    const key = packageNameForSpec(plugin.packageName)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(plugin)
+  }
+  return result
+}
+
+function targetKindsLabel(kinds: PluginHostKind[]) {
+  return kinds.join(" and ")
+}
+
+async function checkPluginTargetDiagnostics(plugins: PluginListItem[], resolveManifest: PluginManifestResolver = readNpmPluginManifest): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = []
+  const cache = new Map<string, Promise<PluginHostKind[]>>()
+
+  async function resolveKinds(spec: string) {
+    const key = spec
+    const cached = cache.get(key)
+    if (cached) return cached
+    const next = resolveManifest(spec).then((targets) => targets.map((target) => target.kind))
+    cache.set(key, next)
+    return next
+  }
+
+  for (const plugin of plugins) {
+    if (plugin.packageName.startsWith("file://")) continue
+    const configuredKind = plugin.configKind ?? "server"
+    try {
+      const targetKinds = await resolveKinds(plugin.packageName)
+      if (targetKinds.includes(configuredKind)) continue
+      const exposed = targetKinds.length === 0 ? "no plugin targets" : `only ${targetKindsLabel(targetKinds)} target${targetKinds.length === 1 ? "" : "s"}`
+      diagnostics.push({
+        severity: "medium",
+        source: "config",
+        path: plugin.configTarget?.path,
+        message: `Plugin "${plugin.packageName}" exposes ${exposed} but is configured in ${configuredKind} config${plugin.configTarget ? `: ${plugin.configTarget.path}` : ""}.`,
+      })
+    } catch (caught) {
+      diagnostics.push({
+        severity: "low",
+        source: "config",
+        path: plugin.configTarget?.path,
+        message: `Could not check plugin "${plugin.packageName}" target metadata: ${caught instanceof Error ? caught.message : String(caught)}`,
+      })
+    }
+  }
+
+  return diagnostics
+}
+
+async function readPluginHostList(options: ConfigCommandOptions, kind: PluginHostKind, excludePaths?: ReadonlySet<string>): Promise<PluginHostListResult> {
+  const targets = locatePluginHostConfigTargets(locatorOptions(options), kind).filter((target) => !excludePaths?.has(target.path))
+  const plugins: PluginListItem[] = []
+  const diagnostics: Diagnostic[] = []
+  for (const target of targets) {
+    const document = await readPluginHostConfig(target)
+    diagnostics.push(...document.diagnostics)
+    if (document.diagnostics.length > 0) continue
+    plugins.push(...(await listNpmPlugins(document.data, target)).map((plugin) => ({ ...plugin, configKind: kind, configTarget: target })))
+  }
+
+  return {
+    kind,
+    target: locatePluginHostConfig(locatorOptions(options), kind),
+    targets,
+    plugins: dedupeHostPlugins(plugins),
+    diagnostics,
+  }
+}
+
 async function validatePluginInstallWrite(write: PreparedPluginInstallWrite, validate: MutatingCommandOptions["validate"]): Promise<ValidationResult> {
   return validatePluginHostKind(write.kind, write.nextConfig, validate)
 }
@@ -257,6 +359,10 @@ function printPluginInstallResult(result: PluginInstallWriteResult, json = false
     }
     if (output.result) printWriteResult(output.result)
   }
+}
+
+function printPluginRestartNotice(json = false) {
+  if (!json) console.log("Restart OpenCode for plugin changes to take effect.")
 }
 
 async function writePluginInstallWrites(spec: string, writes: PreparedPluginInstallWrite[], options: MutatingCommandOptions): Promise<PluginInstallWriteResult> {
@@ -311,6 +417,7 @@ async function writePluginInstallWrites(spec: string, writes: PreparedPluginInst
 
   const result = { spec, outputs, diagnostics: [], dryRun }
   printPluginInstallResult(result, options.json)
+  if (outputs.some((output) => output.result?.written)) printPluginRestartNotice(options.json)
   return result
 }
 
@@ -415,6 +522,7 @@ async function writePluginMutations(
       if ("result" in result) printWriteResult(result.result)
       else printDisabledNpmPluginDeleted(result.target, result.packageName, result.dryRun, false)
     }
+    if (results.some((result) => "result" in result ? result.result.written : result.changed && !result.dryRun)) printPluginRestartNotice()
   }
   return { results }
 }
@@ -428,30 +536,25 @@ function printDisabledNpmPluginDeleted(target: ConfigTarget, packageName: string
   console.log(`${dryRun ? "Dry run delete" : "Deleted"} disabled npm plugin: ${packageName}`)
 }
 
-export async function listPluginsCommand(options: ConfigCommandOptions) {
-  const serverTarget = locatePluginHostConfig(locatorOptions(options), "server")
-  const serverDocument = await readPluginHostConfig(serverTarget)
-  if (serverDocument.diagnostics.length > 0) {
-    printDiagnostics(serverDocument.diagnostics, options.json)
-    setExitCodeForDiagnostics(serverDocument.diagnostics)
+export async function listPluginsCommand(options: PluginListCommandOptions) {
+  const serverHost = await readPluginHostList(options, "server")
+  const tuiHost = await readPluginHostList(options, "tui", new Set(serverHost.targets.map((target) => target.path)))
+  const diagnostics = [...serverHost.diagnostics, ...tuiHost.diagnostics]
+  if (diagnostics.length > 0) {
+    printDiagnostics(diagnostics, options.json)
+    setExitCodeForDiagnostics(diagnostics)
     return
   }
 
-  const serverPlugins = (await listNpmPlugins(serverDocument.data, serverTarget)).map((plugin) => ({ ...plugin, configKind: "server" as const, configTarget: serverTarget }))
-  const tuiTarget = locatePluginHostConfig(locatorOptions(options), "tui")
-  const tuiDocument = tuiTarget.path !== serverTarget.path && tuiTarget.exists ? await readPluginHostConfig(tuiTarget) : undefined
-  if (tuiDocument && tuiDocument.diagnostics.length > 0) {
-    printDiagnostics(tuiDocument.diagnostics, options.json)
-    setExitCodeForDiagnostics(tuiDocument.diagnostics)
-    return
-  }
-  const tuiPlugins = tuiDocument
-    ? (await listNpmPlugins(tuiDocument.data, tuiTarget)).map((plugin) => ({ ...plugin, configKind: "tui" as const, configTarget: tuiTarget }))
-    : []
+  const serverTarget = serverHost.target
+  const tuiTarget = tuiHost.target
+  const serverPlugins = serverHost.plugins
+  const tuiPlugins = tuiHost.plugins
   const plugins = [...serverPlugins, ...tuiPlugins]
+  const targetDiagnostics = options.checkTargets ? await checkPluginTargetDiagnostics(plugins, options.resolveManifest) : []
   const localPlugins = await listLocalPlugins({ scope: options.configScope ?? "global", cwd: options.cwd, home: options.home })
   if (options.json) {
-    console.log(JSON.stringify({ target: serverTarget, targets: { server: serverTarget, tui: tuiTarget }, plugins, npmPlugins: plugins, localPlugins }, null, 2))
+    console.log(JSON.stringify({ target: serverTarget, targets: { server: serverTarget, tui: tuiTarget }, configTargets: { server: serverHost.targets, tui: tuiHost.targets }, plugins, npmPlugins: plugins, localPlugins, targetDiagnostics }, null, 2))
     return
   }
 
@@ -471,15 +574,11 @@ export async function listPluginsCommand(options: ConfigCommandOptions) {
     console.log("local plugins:")
     for (const plugin of localPlugins) console.log(`- ${plugin.fileName} (${plugin.status})`)
   }
+  for (const diagnostic of targetDiagnostics) console.warn(`Warning: ${diagnostic.message}`)
 }
 
 export async function addPluginCommand(packageName: string, options: PluginOptionsCommandOptions) {
-  const targets = await resolvePluginManagementTargets(packageName, options, "add", "server")
-  const parsedOptions = parsePluginOptionsJSON(options.optionsJson)
-  return writePluginMutations(targets, options, (target) => ({
-    nextConfig: addPlugin(target.document.data, packageName, parsedOptions, pluginSchemaForKind(target.kind)),
-    stateChange: { action: "remove-disabled", target: target.target, packageName },
-  }))
+  return installPluginCommand(packageName, options)
 }
 
 export async function installPluginCommand(plugin: string, options: PluginOptionsCommandOptions) {
@@ -558,6 +657,7 @@ function printLocalPluginResult(result: LocalPluginMutationResult, json = false)
   const action = result.dryRun ? `Dry run ${result.action}` : result.changed ? pastTense : `${result.action} unchanged`
   console.log(`${action} ${scope} local plugin: ${result.toPath}`)
   if (result.fromPath) console.log(`Source: ${result.fromPath}`)
+  if (result.changed && !result.dryRun) printPluginRestartNotice()
 }
 
 export async function deletePluginCommand(packageName: string, options: MutatingCommandOptions) {

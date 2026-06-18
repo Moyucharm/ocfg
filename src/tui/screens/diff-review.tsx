@@ -140,6 +140,7 @@ export function DiffReviewScreen(props: {
 
   if (props.review.completed) {
     const results = props.review.results ?? (props.review.result ? [props.review.result] : [])
+    const restartKey = props.review.restartNotice === "plugin" ? "diff.restartPlugin" : "diff.restart"
     return (
       <Box flexDirection="column">
         <Header title={t("diff.configWritten")} />
@@ -150,7 +151,7 @@ export function DiffReviewScreen(props: {
         {props.review.secretFilePath ? <FieldRow label={t("diff.apiKeyFile")} value={props.review.secretFilePath} /> : null}
         {props.review.promptFilePath ? <FieldRow label={t("diff.promptFile")} value={props.review.promptFilePath} /> : null}
         <Text> </Text>
-        <OpenCodeNotice tone="success">{t("diff.restart")}</OpenCodeNotice>
+        <OpenCodeNotice tone="success">{t(restartKey)}</OpenCodeNotice>
         <Text> </Text>
         <Section title={t("diff.actions")} />
         <OpenCodeActionLine item={{ id: "close", label: t("common.close") }} selected />

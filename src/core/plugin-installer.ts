@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import os from "node:os"
 import { promisify } from "node:util"
 import { applyEdits, modify } from "jsonc-parser"
-import { hasConfigFileContent, locateConfig } from "./config-locator.js"
+import { getDefaultOcfgDataPath, locateConfig } from "./config-locator.js"
 import { readConfig } from "./config-reader.js"
 import { isRecord } from "./object-utils.js"
 import { normalizePluginPackage, pluginEntry, PluginEditorError, type PluginConfigEntry, type PluginOptions } from "./plugin-editor.js"
@@ -53,18 +54,78 @@ function configNameForKind(kind: PluginHostKind) {
   return kind === "server" ? "opencode" : "tui"
 }
 
+function formatFromPath(filePath: string): "json" | "jsonc" {
+  return filePath.endsWith(".json") ? "json" : "jsonc"
+}
+
+function expandHome(filePath: string, home: string) {
+  if (filePath === "~") return home
+  if (filePath.startsWith("~/") || filePath.startsWith("~\\")) return path.join(home, filePath.slice(2))
+  return filePath
+}
+
+function pluginConfigPaths(directory: string, kind: PluginHostKind) {
+  const name = configNameForKind(kind)
+  return [path.join(directory, `${name}.json`), path.join(directory, `${name}.jsonc`)]
+}
+
+function configTarget(filePath: string, scope: ConfigTarget["scope"], home: string): ConfigTarget {
+  return {
+    scope,
+    path: filePath,
+    exists: existsSync(filePath),
+    format: formatFromPath(filePath),
+    ocfgDataPath: getDefaultOcfgDataPath(home),
+  }
+}
+
+function firstPluginConfigTarget(directory: string, kind: PluginHostKind, scope: ConfigTarget["scope"], home: string) {
+  const [jsonPath, jsoncPath] = pluginConfigPaths(directory, kind)
+  const selected = existsSync(jsonPath) || !existsSync(jsoncPath) ? jsonPath : jsoncPath
+  return configTarget(selected, scope, home)
+}
+
+function pluginConfigTargetsInDirectory(directory: string, kind: PluginHostKind, scope: ConfigTarget["scope"], home: string) {
+  const existing = pluginConfigPaths(directory, kind)
+    .filter((filePath) => existsSync(filePath))
+    .map((filePath) => configTarget(filePath, scope, home))
+  return existing.length > 0 ? existing : [firstPluginConfigTarget(directory, kind, scope, home)]
+}
+
+function globalPluginConfigDirectory(home: string) {
+  return path.join(home, ".config", "opencode")
+}
+
+function hasProjectPluginConfig(directory: string) {
+  return (["server", "tui"] as const).some((kind) => pluginConfigPaths(directory, kind).some((filePath) => existsSync(filePath)))
+}
+
+function projectPluginConfigDirectory(cwd = process.cwd()) {
+  let current = path.resolve(cwd)
+
+  while (true) {
+    const directory = path.join(current, ".opencode")
+    if (hasProjectPluginConfig(directory)) return directory
+
+    const parent = path.dirname(current)
+    if (parent === current) break
+    if (existsSync(path.join(current, ".git"))) break
+    current = parent
+  }
+
+  return path.join(path.resolve(cwd), ".opencode")
+}
+
+function customPluginConfigDirectory(configPath: string, home: string) {
+  const expanded = expandHome(configPath, home)
+  const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(expanded)
+  return path.dirname(resolved)
+}
+
 function kindForCanonicalConfigPath(filePath: string): PluginHostKind | undefined {
   const basename = path.basename(filePath)
   if (basename === "opencode.json" || basename === "opencode.jsonc") return "server"
   if (basename === "tui.json" || basename === "tui.jsonc") return "tui"
-}
-
-function siblingConfigPath(directory: string, kind: PluginHostKind) {
-  const name = configNameForKind(kind)
-  const jsoncPath = path.join(directory, `${name}.jsonc`)
-  const jsonPath = path.join(directory, `${name}.json`)
-  if (kind === "tui") return existsSync(jsoncPath) || !hasConfigFileContent(jsonPath) ? jsoncPath : jsonPath
-  return existsSync(jsoncPath) || !existsSync(jsonPath) ? jsoncPath : jsonPath
 }
 
 function patch(text: string, patchPath: Array<string | number>, value: unknown, insert = false) {
@@ -191,7 +252,7 @@ function pluginSpec(entry: unknown) {
   return entry[0]
 }
 
-function packageNameForSpec(spec: string) {
+export function packageNameForSpec(spec: string) {
   const value = spec.trim()
   if (value.startsWith("file://")) return value
   if (value.startsWith("@")) {
@@ -215,19 +276,59 @@ function cloneConfig(config: Record<string, unknown>) {
 }
 
 export function locatePluginHostConfig(options: ConfigLocatorOptions, kind: PluginHostKind) {
-  if (!options.configPath) return locateConfig(options, configNameForKind(kind))
+  const home = options.home ?? os.homedir()
+  if (!options.configPath) return locatePluginHostConfigTargets(options, kind)[0] ?? firstPluginConfigTarget(globalPluginConfigDirectory(home), kind, "global", home)
 
   const explicitTarget = locateConfig(options)
   const explicitKind = kindForCanonicalConfigPath(explicitTarget.path)
   if (!explicitKind || explicitKind === kind) return explicitTarget
 
-  return locateConfig({ ...options, configPath: siblingConfigPath(path.dirname(explicitTarget.path), kind) })
+  return firstPluginConfigTarget(path.dirname(explicitTarget.path), kind, explicitTarget.scope, home)
+}
+
+export function locatePluginHostConfigTargets(options: ConfigLocatorOptions, kind: PluginHostKind): ConfigTarget[] {
+  const home = options.home ?? os.homedir()
+  if (!options.configPath) {
+    if (options.scope === "project") return pluginConfigTargetsInDirectory(projectPluginConfigDirectory(options.cwd), kind, "project", home)
+    return pluginConfigTargetsInDirectory(globalPluginConfigDirectory(home), kind, "global", home)
+  }
+
+  const explicitTarget = locateConfig(options)
+  const explicitKind = kindForCanonicalConfigPath(explicitTarget.path)
+  if (!explicitKind) return [explicitTarget]
+  if (explicitKind === kind) {
+    if (!explicitTarget.exists) return [explicitTarget]
+    const targets = pluginConfigTargetsInDirectory(path.dirname(explicitTarget.path), kind, explicitTarget.scope, home)
+    return [explicitTarget, ...targets.filter((target) => target.path !== explicitTarget.path)]
+  }
+
+  return pluginConfigTargetsInDirectory(customPluginConfigDirectory(explicitTarget.path, home), kind, explicitTarget.scope, home)
 }
 
 export async function readPluginHostConfig(target: ConfigTarget): Promise<ConfigDocument> {
   const document = await readConfig(target)
   if (!target.exists) return { ...document, data: {}, text: "" }
   return document
+}
+
+async function readPluginHostConfigs(options: ConfigLocatorOptions, kind: PluginHostKind) {
+  return Promise.all(locatePluginHostConfigTargets(options, kind).map((target) => readPluginHostConfig(target)))
+}
+
+function pluginLocations(document: ConfigDocument, kind: PluginHostKind, packageKey: string) {
+  const list = pluginList(document.data) ?? []
+  return list
+    .map((entry, index) => ({ kind, document, index, spec: pluginSpec(entry) }))
+    .filter((location) => location.spec && !location.spec.startsWith("file://") && packageNameForSpec(location.spec) === packageKey)
+}
+
+function duplicateLocationMessage(spec: string, locations: Array<{ kind: PluginHostKind; document: ConfigDocument; spec?: string }>) {
+  const files = locations.map((location) => `${location.kind}:${location.document.target.path}`).join(", ")
+  return `Plugin "${spec}" already exists in multiple plugin config files: ${files}`
+}
+
+function targetKindsLabel(kinds: Set<PluginHostKind>) {
+  return [...kinds].join(" and ")
 }
 
 export function preparePluginHostWrite(
@@ -276,10 +377,37 @@ export async function preparePluginInstallWrites(input: PreparePluginInstallInpu
   const selection = input.pluginTarget ?? "auto"
   const targets = await resolvePluginInstallTargets(input.spec, selection, input.options, input.resolveManifest)
   const writes: PreparedPluginInstallWrite[] = []
+  const targetKinds = new Set(targets.map((target) => target.kind))
+  const packageKey = packageNameForSpec(normalizePluginPackage(input.spec))
+  const documentsByKind = new Map<PluginHostKind, ConfigDocument[]>()
+
+  async function documentsFor(kind: PluginHostKind) {
+    const existing = documentsByKind.get(kind)
+    if (existing) return existing
+    const documents = await readPluginHostConfigs(input, kind)
+    documentsByKind.set(kind, documents)
+    return documents
+  }
+
+  if (selection !== "both") {
+    for (const kind of ["server", "tui"] as const) {
+      if (targetKinds.has(kind)) continue
+      const duplicates = (await documentsFor(kind)).flatMap((document) => pluginLocations(document, kind, packageKey))
+      if (duplicates.length > 0) {
+        const targetsLabel = targetKindsLabel(targetKinds)
+        if (selection === "auto") throw new PluginInstallError(`Plugin "${input.spec}" is already configured for ${kind} at ${duplicates[0]?.document.target.path}, but package metadata targets ${targetsLabel}. Remove the existing entry or pass --plugin-target ${kind} explicitly.`)
+        throw new PluginInstallError(`Plugin "${input.spec}" is already configured for ${kind} at ${duplicates[0]?.document.target.path}. Remove the existing entry before installing it into ${targetsLabel}.`)
+      }
+    }
+  }
 
   for (const target of targets) {
-    const configTarget = locatePluginHostConfig(input, target.kind)
-    const document = await readPluginHostConfig(configTarget)
+    const documents = await documentsFor(target.kind)
+    const duplicates = documents.flatMap((document) => pluginLocations(document, target.kind, packageKey))
+    if (duplicates.length > 1) throw new PluginInstallError(duplicateLocationMessage(input.spec, duplicates))
+
+    const primaryTarget = locatePluginHostConfig(input, target.kind)
+    const document = duplicates[0]?.document ?? documents.find((item) => item.target.path === primaryTarget.path) ?? await readPluginHostConfig(primaryTarget)
     writes.push(preparePluginHostWrite(document, target.kind, input.spec, target.options))
   }
 

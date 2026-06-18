@@ -88,6 +88,7 @@ export type DiffReviewState = {
   configKind?: PluginHostKind
   pluginInstallSpec?: string
   pluginInstallWrites?: PreparedPluginInstallWrite[]
+  restartNotice?: "config" | "plugin"
   promptFilePath?: string
   error?: string
   completed?: boolean

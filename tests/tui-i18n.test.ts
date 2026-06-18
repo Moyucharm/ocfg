@@ -19,6 +19,11 @@ describe("TUI i18n", () => {
     }
   })
 
+  test("has a plugin-specific restart notice", () => {
+    expect(translate("en", "diff.restartPlugin")).toContain("plugin changes")
+    expect(translate("zh-CN", "diff.restartPlugin")).toContain("插件")
+  })
+
   test("leaves endpoint type labels as canonical English labels", () => {
     expect(channelTypeOptions.map((option) => option.label)).toEqual([
       "OpenAI compatible",

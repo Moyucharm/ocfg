@@ -457,10 +457,165 @@ describe("commands", () => {
     ])
   })
 
+  test("lists custom config path plugins once across host targets", async () => {
+    const filePath = await tempFile("custom.jsonc")
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, `{
+  "plugin": ["custom-plugin"]
+}
+`, "utf8")
+    const resolvedSpecs: string[] = []
+
+    await listPluginsCommand({
+      configPath: filePath,
+      json: true,
+      checkTargets: true,
+      resolveManifest: async (spec) => {
+        resolvedSpecs.push(spec)
+        return [{ kind: "server" as const }]
+      },
+    })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.configTargets.server.map((target: { path: string }) => target.path)).toEqual([filePath])
+    expect(output.configTargets.tui).toEqual([])
+    expect(output.plugins.map((plugin: { packageName: string; configKind: string }) => [plugin.packageName, plugin.configKind])).toEqual([["custom-plugin", "server"]])
+    expect(output.targetDiagnostics).toEqual([])
+    expect(resolvedSpecs).toEqual(["custom-plugin"])
+  })
+
+  test("lists npm plugins from json and jsonc host configs", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-list-merged-"))
+    const configDir = path.join(home, ".config", "opencode")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(path.join(configDir, "opencode.json"), `{
+  "plugin": ["server-json"]
+}
+`, "utf8")
+    await writeFile(path.join(configDir, "opencode.jsonc"), `{
+  "plugin": ["server-jsonc"]
+}
+`, "utf8")
+    await writeFile(path.join(configDir, "tui.json"), `{
+  "plugin": ["tui-json"]
+}
+`, "utf8")
+    await writeFile(path.join(configDir, "tui.jsonc"), `{
+  "plugin": ["tui-jsonc"]
+}
+`, "utf8")
+
+    await listPluginsCommand({ configScope: "global", home, json: true })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.configTargets.server.map((target: { path: string }) => path.basename(target.path))).toEqual(["opencode.json", "opencode.jsonc"])
+    expect(output.configTargets.tui.map((target: { path: string }) => path.basename(target.path))).toEqual(["tui.json", "tui.jsonc"])
+    expect(output.plugins.map((plugin: { packageName: string; configKind: string }) => [plugin.packageName, plugin.configKind])).toEqual([
+      ["server-json", "server"],
+      ["server-jsonc", "server"],
+      ["tui-json", "tui"],
+      ["tui-jsonc", "tui"],
+    ])
+  })
+
+  test("checks npm plugin target metadata when requested", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": ["opencode-cache-hit@latest"]
+}
+`)
+
+    await listPluginsCommand({
+      configPath: filePath,
+      json: true,
+      checkTargets: true,
+      resolveManifest: async () => [{ kind: "tui" as const }],
+    })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.targetDiagnostics).toHaveLength(1)
+    expect(output.targetDiagnostics[0]).toMatchObject({ severity: "medium", source: "config", path: filePath })
+    expect(output.targetDiagnostics[0].message).toContain("only tui target")
+    expect(output.targetDiagnostics[0].message).toContain("server config")
+  })
+
+  test("checks target metadata per exact package spec", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-version-targets-"))
+    const serverPath = path.join(dir, "opencode.jsonc")
+    const tuiPath = path.join(dir, "tui.jsonc")
+    await writeFile(serverPath, `{
+  "plugin": ["foo@1.0.0"]
+}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "plugin": ["foo@2.0.0"]
+}
+`, "utf8")
+    const resolvedSpecs: string[] = []
+
+    await listPluginsCommand({
+      configPath: serverPath,
+      json: true,
+      checkTargets: true,
+      resolveManifest: async (spec) => {
+        resolvedSpecs.push(spec)
+        if (spec === "foo@1.0.0") return [{ kind: "server" as const }]
+        if (spec === "foo@2.0.0") return [{ kind: "tui" as const }]
+        throw new Error(`Unexpected spec: ${spec}`)
+      },
+    })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.plugins.map((plugin: { packageName: string; configKind: string }) => [plugin.packageName, plugin.configKind])).toEqual([
+      ["foo@1.0.0", "server"],
+      ["foo@2.0.0", "tui"],
+    ])
+    expect(output.targetDiagnostics).toEqual([])
+    expect(resolvedSpecs).toEqual(["foo@1.0.0", "foo@2.0.0"])
+  })
+
+  test("prints target metadata warnings without failing list output", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": ["opencode-cache-hit@latest"]
+}
+`)
+
+    await listPluginsCommand({
+      configPath: filePath,
+      checkTargets: true,
+      resolveManifest: async () => [{ kind: "tui" as const }],
+    })
+
+    expect(log.mock.calls.some((call) => String(call[0]).includes("opencode-cache-hit@latest"))).toBe(true)
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("server config"))).toBe(true)
+    expect(process.exitCode).toBeUndefined()
+  })
+
+  test("reports metadata check failures as low severity diagnostics", async () => {
+    const filePath = await writeConfig(`{
+  "plugin": ["unknown-plugin"]
+}
+`)
+
+    await listPluginsCommand({
+      configPath: filePath,
+      json: true,
+      checkTargets: true,
+      resolveManifest: async () => {
+        throw new Error("npm unavailable")
+      },
+    })
+
+    const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
+    expect(output.targetDiagnostics).toHaveLength(1)
+    expect(output.targetDiagnostics[0]).toMatchObject({ severity: "low", source: "config", path: filePath })
+    expect(output.targetDiagnostics[0].message).toContain("npm unavailable")
+    expect(process.exitCode).toBeUndefined()
+  })
+
   test("adds edits and deletes plugin config", async () => {
     const filePath = await tempFile()
 
-    await addPluginCommand("opencode-wakatime", { configPath: filePath, optionsJson: "{\"apiKey\":\"{env:WAKATIME_API_KEY}\"}", validate: valid })
+    await addPluginCommand("opencode-wakatime", { configPath: filePath, pluginTarget: "server", optionsJson: "{\"apiKey\":\"{env:WAKATIME_API_KEY}\"}", validate: valid })
     expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["opencode-wakatime", { apiKey: "{env:WAKATIME_API_KEY}" }]])
 
     await editPluginCommand("opencode-wakatime", { configPath: filePath, clearOptions: true, validate: valid })
@@ -504,8 +659,69 @@ describe("commands", () => {
     await installPluginCommand("acme@1.2.3", { configScope: "global", home, validate: valid, resolveManifest })
 
     const configDir = path.join(home, ".config", "opencode")
-    expect(parse(await readFile(path.join(configDir, "opencode.jsonc"), "utf8")).plugin).toEqual([["acme@1.2.3", { custom: true }]])
-    expect(parse(await readFile(path.join(configDir, "tui.jsonc"), "utf8")).plugin).toEqual([["acme@1.2.3", { compact: true }]])
+    expect(parse(await readFile(path.join(configDir, "opencode.json"), "utf8")).plugin).toEqual([["acme@1.2.3", { custom: true }]])
+    expect(parse(await readFile(path.join(configDir, "tui.json"), "utf8")).plugin).toEqual([["acme@1.2.3", { compact: true }]])
+  })
+
+  test("installs project npm plugins into .opencode json configs", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-project-targets-"))
+    const resolveManifest = async () => [{ kind: "server" as const }, { kind: "tui" as const }]
+
+    await installPluginCommand("acme", { configScope: "project", cwd, validate: valid, resolveManifest })
+
+    expect(parse(await readFile(path.join(cwd, ".opencode", "opencode.json"), "utf8")).plugin).toEqual(["acme"])
+    expect(parse(await readFile(path.join(cwd, ".opencode", "tui.json"), "utf8")).plugin).toEqual(["acme"])
+  })
+
+  test("auto install writes tui-only npm plugin only to tui config", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-auto-tui-"))
+    const resolveManifest = async () => [{ kind: "tui" as const }]
+
+    await installPluginCommand("opencode-cache-hit@latest", { configScope: "global", home, validate: valid, resolveManifest })
+
+    const configDir = path.join(home, ".config", "opencode")
+    expect(parse(await readFile(path.join(configDir, "tui.json"), "utf8")).plugin).toEqual(["opencode-cache-hit@latest"])
+    await expect(stat(path.join(configDir, "opencode.json"))).rejects.toThrow()
+  })
+
+  test("add plugin uses auto target detection", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-add-auto-"))
+    const resolveManifest = async () => [{ kind: "tui" as const }]
+
+    await addPluginCommand("tui-only", { configScope: "global", home, validate: valid, resolveManifest })
+
+    const configDir = path.join(home, ".config", "opencode")
+    expect(parse(await readFile(path.join(configDir, "tui.json"), "utf8")).plugin).toEqual(["tui-only"])
+    await expect(stat(path.join(configDir, "opencode.json"))).rejects.toThrow()
+  })
+
+  test("auto install rejects plugins already configured for another host", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-cross-host-"))
+    const configDir = path.join(home, ".config", "opencode")
+    await mkdir(configDir, { recursive: true })
+    await writeFile(path.join(configDir, "opencode.json"), `{
+  "plugin": ["opencode-cache-hit@latest"]
+}
+`, "utf8")
+    const resolveManifest = async () => [{ kind: "tui" as const }]
+
+    await expect(installPluginCommand("opencode-cache-hit@latest", { configScope: "global", home, validate: valid, resolveManifest })).rejects.toThrow("already configured for server")
+    await expect(stat(path.join(configDir, "tui.json"))).rejects.toThrow()
+  })
+
+  test("explicit single-target install rejects plugins configured in another host", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-explicit-cross-host-"))
+    const serverPath = path.join(dir, "opencode.json")
+    const tuiPath = path.join(dir, "tui.json")
+    await writeFile(serverPath, `{}
+`, "utf8")
+    await writeFile(tuiPath, `{
+  "plugin": ["shared-plugin"]
+}
+`, "utf8")
+
+    await expect(installPluginCommand("shared-plugin", { configPath: serverPath, pluginTarget: "server", validate: valid })).rejects.toThrow("already configured for tui")
+    expect(parse(await readFile(serverPath, "utf8")).plugin).toBeUndefined()
   })
 
   test("installs npm plugins into tui config with explicit target fallback", async () => {
@@ -514,8 +730,8 @@ describe("commands", () => {
     await installPluginCommand("tui-only", { configScope: "global", home, pluginTarget: "tui", validate: valid })
 
     const configDir = path.join(home, ".config", "opencode")
-    expect(parse(await readFile(path.join(configDir, "tui.jsonc"), "utf8")).plugin).toEqual(["tui-only"])
-    await expect(stat(path.join(configDir, "opencode.jsonc"))).rejects.toThrow()
+    expect(parse(await readFile(path.join(configDir, "tui.json"), "utf8")).plugin).toEqual(["tui-only"])
+    await expect(stat(path.join(configDir, "opencode.json"))).rejects.toThrow()
   })
 
   test("lists plugins without parsing stale empty tui json", async () => {
@@ -527,24 +743,22 @@ describe("commands", () => {
     await listPluginsCommand({ configScope: "global", home, json: true })
 
     const output = JSON.parse(log.mock.calls.at(-1)?.[0] as string)
-    expect(output.targets.tui.path).toBe(path.join(configDir, "tui.jsonc"))
+    expect(output.targets.tui.path).toBe(path.join(configDir, "tui.json"))
     expect(output.plugins).toEqual([])
   })
 
-  test("installs tui plugin into jsonc when stale empty tui json exists", async () => {
+  test("installs tui plugin into empty tui json when it exists", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-stale-tui-install-"))
     const configDir = path.join(home, ".config", "opencode")
     const staleTuiJson = path.join(configDir, "tui.json")
-    const tuiJsonc = path.join(configDir, "tui.jsonc")
     await mkdir(configDir, { recursive: true })
     await writeFile(staleTuiJson, "")
 
     await installPluginCommand("opencode-cache-hit@latest", { configScope: "global", home, pluginTarget: "tui", validate: valid })
 
-    const tui = parse(await readFile(tuiJsonc, "utf8"))
+    const tui = parse(await readFile(staleTuiJson, "utf8"))
     expect(tui.$schema).toBe("https://opencode.ai/tui.json")
     expect(tui.plugin).toEqual(["opencode-cache-hit@latest"])
-    await expect(readFile(staleTuiJson, "utf8")).resolves.toBe("")
     await expect(stat(path.join(home, ".config", "ocfg", "backups", "configs"))).rejects.toThrow()
   })
 
@@ -722,8 +936,8 @@ describe("commands", () => {
     await installPluginCommand("acme", { configScope: "global", home, dryRun: true, validate: valid, resolveManifest })
 
     const configDir = path.join(home, ".config", "opencode")
-    await expect(stat(path.join(configDir, "opencode.jsonc"))).rejects.toThrow()
-    await expect(stat(path.join(configDir, "tui.jsonc"))).rejects.toThrow()
+    await expect(stat(path.join(configDir, "opencode.json"))).rejects.toThrow()
+    await expect(stat(path.join(configDir, "tui.json"))).rejects.toThrow()
     expect(log.mock.calls.some((call) => String(call[0]).includes("Dry run"))).toBe(true)
   })
 
@@ -829,7 +1043,7 @@ describe("commands", () => {
   test("plugin command dry-run does not create missing config", async () => {
     const filePath = await tempFile()
 
-    await addPluginCommand("opencode-wakatime", { configPath: filePath, dryRun: true, validate: valid })
+    await addPluginCommand("opencode-wakatime", { configPath: filePath, pluginTarget: "server", dryRun: true, validate: valid })
 
     await expect(stat(filePath)).rejects.toThrow()
     expect(log.mock.calls.some((call) => String(call[0]).includes("Dry run"))).toBe(true)

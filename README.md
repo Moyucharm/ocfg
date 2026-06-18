@@ -95,7 +95,7 @@ Install an OpenCode npm plugin:
 ocfg install plugin opencode-wakatime
 ```
 
-`install plugin` reads npm package metadata and writes server plugins to `opencode.jsonc`, TUI plugins to `tui.jsonc`, or both when a package exposes both targets. If metadata cannot be read, choose explicitly with `--plugin-target server`, `--plugin-target tui`, or `--plugin-target both`.
+`install plugin` reads npm package metadata and writes server plugins to `opencode.json`/`opencode.jsonc`, TUI plugins to `tui.json`/`tui.jsonc`, or both when a package exposes both targets. Plugin config file selection follows OpenCode's installer order: `.json` first, then `.jsonc` when it already exists. Project-scope plugin installs create `.opencode/opencode.json` or `.opencode/tui.json` when no matching file exists. If metadata cannot be read, choose explicitly with `--plugin-target server`, `--plugin-target tui`, or `--plugin-target both`. Restart OpenCode after changing plugin config so newly added, removed, or retargeted plugins are loaded.
 
 Install a local plugin file:
 
@@ -213,7 +213,7 @@ ocfg delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
 List configured plugins:
 
 ```bash
-ocfg list plugins [--config-scope global|project] [--config-path path] [--json]
+ocfg list plugins [--config-scope global|project] [--config-path path] [--check-targets] [--json]
 ```
 
 Install or enable an npm plugin:
@@ -223,7 +223,7 @@ ocfg install plugin <package-name> [--plugin-target auto|server|tui|both] [--opt
 ocfg enable plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
 ```
 
-`ocfg install plugin` defaults to `--plugin-target auto`, detecting target files from package `exports["./server"]`, `main`, `exports["./tui"]`, and `oc-themes` metadata. Use `--plugin-target server|tui|both` to bypass auto-detection.
+`ocfg install plugin` defaults to `--plugin-target auto`, detecting target files from package `exports["./server"]`, `main`, `exports["./tui"]`, and `oc-themes` metadata. Use `--plugin-target server|tui|both` to bypass auto-detection. `ocfg list plugins` reads both `.json` and `.jsonc` host files for each plugin target, matching the files OpenCode can load. Add `--check-targets` to query npm metadata and warn when a package is configured in the wrong host; the default list command stays offline.
 
 Install a local plugin file:
 
@@ -241,8 +241,10 @@ ocfg enable plugin <filename-or-name> --local [--config-scope global|project] [-
 Add a plugin using the older alias:
 
 ```bash
-ocfg add plugin <package-name> [--plugin-target server|tui|both] [--options-json <json>] [--dry-run]
+ocfg add plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
 ```
+
+`ocfg add plugin` is a compatibility alias for `ocfg install plugin` and also defaults to `--plugin-target auto`.
 
 Edit a plugin:
 
@@ -311,13 +313,13 @@ The TUI is opened with `ocfg tui`.
 - `Doctor` shows actionable config diagnostics.
 - `Connect provider` creates a provider through endpoint type, provider metadata, secret file storage, model detection or manual model entry, capability review, and Diff review.
 - `Edit Provider` selects an existing provider, edits provider fields, can enter model management, and can delete the selected provider with confirmation.
-- `Manage Plugins` lists npm and local plugins, installs npm packages into config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
+- `Manage Plugins` lists npm and local plugins, installs npm packages into the matching OpenCode plugin host config, installs local files into the OpenCode plugin directory, edits npm option JSON, and toggles local plugin files.
 - `Manage Prompts` first separates `Shared rules (AGENTS.md)` from `Agent prompts (agent.prompt)`. Shared rules lists and edits the active `AGENTS.md`, reusable `AGENTS.md` configs, and configured `instructions`; it can create/edit/switch/delete `AGENTS.md` configs with overwrite confirmation and automatic preservation of the previous active rules. Agent prompts lists prompt files and bundled templates, edits multi-line prompt content with arrow-key cursor movement and wrapping, and applies prompts only to `build`, `plan`, or a custom agent.
 - `Set Default Model` sets or clears top-level `model` and `small_model` using existing provider/model refs.
 - `Tools` includes an OpenCode Exa search toggle. Enabling writes `permission.websearch = "allow"` and `permission.webfetch = "allow"` to the currently selected global or project config, then sets the current user's `OPENCODE_ENABLE_EXA=1`. Disabling only sets `OPENCODE_ENABLE_EXA=0` and leaves config untouched.
 - `Switch Config Target` changes between global and project config targets before writing.
 
-Most config-mutating TUI flows show a diff before writing and require explicit confirmation. The Exa search tool is intentionally one-click: it writes immediately, creates normal config backups when it changes the selected OpenCode config, and updates only the current user's environment. Local plugin installs report the affected file path; enable/disable changes are reflected directly in the plugin list status.
+Most config-mutating TUI flows show a diff before writing and require explicit confirmation. The Exa search tool is intentionally one-click: it writes immediately, creates normal config backups when it changes the selected OpenCode config, and updates only the current user's environment. Local plugin installs report the affected file path; enable/disable changes are reflected directly in the plugin list status. Restart OpenCode after plugin config changes for runtime plugin loading to catch up.
 
 For Exa search environment changes, Windows uses user-level `setx` and does not require administrator rights. On macOS/Linux, ocfg first reuses an existing ocfg-managed Exa block in `~/.bashrc`, `~/.zshrc`, or `~/.profile`; if none exists, ocfg writes one shell config chosen from the current shell. Close and reopen the current terminal, or open a new terminal window, then start OpenCode.
 

@@ -543,6 +543,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         diff: pluginInstallDiff(writes),
         pluginInstallSpec: packageName,
         pluginInstallWrites: writes,
+        restartNotice: "plugin",
       }, "plugin-add", "plugin-list")
     } catch (caught) {
       const message = `${caught instanceof Error ? caught.message : String(caught)} ${translate(tuiPreferences.language, "plugin.installTargetHint")}`
@@ -573,6 +574,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         nextConfig,
         nextText,
         configKind: selectedPlugin?.configKind,
+        restartNotice: "plugin",
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
@@ -592,6 +594,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         nextConfig,
         nextText,
         configKind: selectedPlugin?.configKind,
+        restartNotice: "plugin",
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
@@ -612,6 +615,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         nextText,
         configKind: plugin.configKind,
         npmPluginState: { action: "disable", target, plugin: { packageName: plugin.packageName, options: plugin.options } },
+        restartNotice: "plugin",
       }, "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-list")
@@ -632,6 +636,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         nextText,
         configKind: plugin.configKind,
         npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
+        restartNotice: "plugin",
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")
@@ -659,6 +664,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
         nextText,
         configKind: plugin.configKind,
         npmPluginState: { action: "remove-disabled", target, packageName: plugin.packageName },
+        restartNotice: "plugin",
       }, "plugin-edit", "plugin-list")
     } catch (caught) {
       openDiffReview({ targetPath: translate(tuiPreferences.language, "diff.noTargetSelected"), diff: createConfigDiff("", ""), error: caught instanceof Error ? caught.message : String(caught) }, "plugin-edit")

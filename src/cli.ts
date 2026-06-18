@@ -94,7 +94,7 @@ addMutatingOptions(add.command("provider <provider-id>").description("Add a prov
 
 addMutatingOptions(add.command("plugin <package-name>").description("Add an OpenCode npm plugin."))
   .option("--options-json <json>", "Plugin options object as JSON")
-  .option("--plugin-target <target>", "Plugin config target: server, tui, or both", "server")
+  .option("--plugin-target <target>", "Plugin config target: auto, server, tui, or both", "auto")
   .action(async (packageName, options) => {
     await runAction(async () => {
       const { addPluginCommand } = await import("./commands/plugin.js")
@@ -322,6 +322,7 @@ addMutatingOptions(switchCommand.command("rules-config <name>").description("Swi
 
 const list = program.command("list").description("List OpenCode configuration entries.")
 addConfigOptions(list.command("plugins").description("List configured OpenCode npm and local plugins."))
+  .option("--check-targets", "Check npm metadata for plugins configured in the wrong host", false)
   .action(async (options) => {
     await runAction(async () => {
       const { listPluginsCommand } = await import("./commands/plugin.js")

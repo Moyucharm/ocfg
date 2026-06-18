@@ -95,6 +95,8 @@ ocfg add provider custom \
 ocfg install plugin opencode-wakatime
 ```
 
+`install plugin` 会读取 npm 包元数据，并按 OpenCode 官方安装顺序写入插件 host 配置：server 插件写入 `opencode.json`/`opencode.jsonc`，TUI 插件写入 `tui.json`/`tui.jsonc`，同时暴露两个 target 的包会写入两边。文件选择顺序为 `.json` 优先，其次是已存在的 `.jsonc`；项目作用域在缺失时会创建 `.opencode/opencode.json` 或 `.opencode/tui.json`。如果无法读取元数据，可用 `--plugin-target server`、`--plugin-target tui` 或 `--plugin-target both` 明确指定。修改插件配置后需要重启 OpenCode，新的插件增删或 target 调整才会被运行中的 OpenCode 加载。
+
 安装一个本地插件文件：
 
 ```bash
@@ -211,15 +213,17 @@ ocfg delete model <provider-id/model-id> [--confirm-token <token>] [--dry-run]
 列出已配置插件：
 
 ```bash
-ocfg list plugins [--config-scope global|project] [--config-path path] [--json]
+ocfg list plugins [--config-scope global|project] [--config-path path] [--check-targets] [--json]
 ```
 
 安装或启用 npm 插件：
 
 ```bash
-ocfg install plugin <package-name> [--options-json <json>] [--dry-run]
-ocfg enable plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg install plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
+ocfg enable plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
 ```
+
+`ocfg install plugin` 默认使用 `--plugin-target auto`，会根据包的 `exports["./server"]`、`main`、`exports["./tui"]` 和 `oc-themes` 元数据识别目标文件。使用 `--plugin-target server|tui|both` 可以跳过自动识别。`ocfg list plugins` 会读取每个插件 target 下的 `.json` 和 `.jsonc` host 文件，匹配 OpenCode 可加载的文件集合。添加 `--check-targets` 会查询 npm 元数据并警告配置在错误 host 的插件；默认列表命令保持离线。
 
 安装本地插件文件：
 
@@ -237,20 +241,22 @@ ocfg enable plugin <filename-or-name> --local [--config-scope global|project] [-
 使用旧别名添加插件：
 
 ```bash
-ocfg add plugin <package-name> [--options-json <json>] [--dry-run]
+ocfg add plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json>] [--dry-run]
 ```
+
+`ocfg add plugin` 是 `ocfg install plugin` 的兼容别名，同样默认使用 `--plugin-target auto`。
 
 编辑插件：
 
 ```bash
-ocfg edit plugin <package-name> [--options-json <json> | --clear-options] [--dry-run]
+ocfg edit plugin <package-name> [--plugin-target auto|server|tui|both] [--options-json <json> | --clear-options] [--dry-run]
 ```
 
 禁用或删除 npm 插件：
 
 ```bash
-ocfg disable plugin <package-name> [--dry-run]
-ocfg delete plugin <package-name> [--dry-run]
+ocfg disable plugin <package-name> [--plugin-target auto|server|tui|both] [--dry-run]
+ocfg delete plugin <package-name> [--plugin-target auto|server|tui|both] [--dry-run]
 ```
 
 列出 AGENTS.md 规则、已配置 instructions、提示词文件和内置提示词模板：
@@ -307,13 +313,13 @@ ocfg tui
 - `Doctor` 显示可执行的配置诊断信息。
 - `添加渠道` 通过端点类型、渠道元数据、密钥文件存储、模型检测或手动模型输入、能力审查和 Diff 审查来创建渠道。
 - `Edit Provider` 选择现有提供商，编辑提供商字段，可进入模型管理，也可在二次确认后删除所选提供商。
-- `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
+- `Manage Plugins` 列出 npm 和本地插件，把 npm 包写入匹配的 OpenCode 插件 host 配置，把本地文件安装到 OpenCode 插件目录，编辑 npm 选项 JSON，并切换本地插件文件启用状态。
 - `Manage Prompts` 先分为 `通用规则（AGENTS.md）` 和 `智能体提示词（agent.prompt）`。通用规则列出并编辑当前 `AGENTS.md`、可复用 `AGENTS.md` 配置和已配置的 `instructions`；可创建/编辑/切换/删除 `AGENTS.md` 配置，切换覆盖前会确认并自动保留旧的当前规则。智能体提示词列出提示词文件和内置模板，用支持方向键移动和自动换行的多行编辑器编辑内容，并且只应用到 `build`、`plan` 或自定义 Agent。
 - `Set Default Model` 使用现有 provider/model 引用设置或清除顶层 `model` 和 `small_model`。
 - `Tools` 包含 OpenCode Exa 搜索开关。开启会把 `permission.websearch = "allow"` 和 `permission.webfetch = "allow"` 写入当前选择的全局或项目配置，然后设置当前用户的 `OPENCODE_ENABLE_EXA=1`。关闭只设置 `OPENCODE_ENABLE_EXA=0`，不会改动配置。
 - `Switch Config Target` 在写入前切换全局和项目配置目标。
 
-大多数会修改配置的 TUI 流程会在写入前显示 Diff，并要求明确确认。Exa 搜索工具按设计是一键开关：它会立即写入，修改所选 OpenCode 配置时仍会创建常规备份，并且只更新当前用户的环境变量。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。
+大多数会修改配置的 TUI 流程会在写入前显示 Diff，并要求明确确认。Exa 搜索工具按设计是一键开关：它会立即写入，修改所选 OpenCode 配置时仍会创建常规备份，并且只更新当前用户的环境变量。本地插件安装会报告受影响的文件路径；启用/禁用结果直接体现在插件列表状态中。插件配置变更后请重启 OpenCode，让运行时插件加载状态与配置保持一致。
 
 Exa 搜索的环境变量变更在 Windows 上使用用户级 `setx`，不需要管理员权限。macOS/Linux 会先复用 `~/.bashrc`、`~/.zshrc` 或 `~/.profile` 里已有的 ocfg Exa 管理块；如果不存在，ocfg 才会按当前 shell 选择一个配置文件写入。请关闭并重新打开当前终端，或打开新的终端窗口，然后再启动 OpenCode。
 

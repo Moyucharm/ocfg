@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react"
 import { Text } from "ink"
-import { readConfig } from "../../core/config-reader.js"
 import { listLocalPlugins, type LocalPluginItem } from "../../core/local-plugin-manager.js"
 import { listNpmPlugins } from "../../core/npm-plugin-state.js"
-import { locatePluginHostConfig } from "../../core/plugin-installer.js"
+import { locatePluginHostConfigTargets, packageNameForSpec, readPluginHostConfig, type PluginHostKind } from "../../core/plugin-installer.js"
 import type { PluginListItem } from "../../core/plugin-editor.js"
 import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
@@ -101,6 +100,28 @@ export function PluginListScreen(props: {
     if (localPlugin) props.onEditLocalPlugin(localPlugin)
   }
 
+  function dedupePlugins(items: PluginListItem[]) {
+    const seen = new Set<string>()
+    const result: PluginListItem[] = []
+    for (const plugin of items) {
+      const key = packageNameForSpec(plugin.packageName)
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(plugin)
+    }
+    return result
+  }
+
+  async function loadHostPlugins(kind: PluginHostKind) {
+    const items: PluginListItem[] = []
+    for (const target of locatePluginHostConfigTargets({ scope: props.selection.scope, configPath: props.selection.target?.path }, kind)) {
+      const document = await readPluginHostConfig(target)
+      if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+      items.push(...(await listNpmPlugins(document.data, target)).map((plugin) => ({ ...plugin, configKind: kind, configTarget: target })))
+    }
+    return dedupePlugins(items)
+  }
+
   useTuiInput((input, key) => {
     const rows = openCodeMenuRows(groups, "")
     const count = rows.filter((row) => row.kind === "item").length
@@ -119,16 +140,8 @@ export function PluginListScreen(props: {
       setLoading(true)
       setError(undefined)
       try {
-        const target = locatePluginHostConfig({ scope: props.selection.scope, configPath: props.selection.target?.path }, "server")
-        const tuiTarget = locatePluginHostConfig({ scope: props.selection.scope, configPath: props.selection.target?.path }, "tui")
-        const document = await readConfig(target)
-        if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-        const serverPlugins = (await listNpmPlugins(document.data, target)).map((plugin) => ({ ...plugin, configKind: "server" as const, configTarget: target }))
-        const tuiDocument = tuiTarget.exists ? await readConfig(tuiTarget) : undefined
-        if (tuiDocument && tuiDocument.diagnostics.length > 0) throw new Error(tuiDocument.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
-        const tuiPlugins = tuiDocument
-          ? (await listNpmPlugins(tuiDocument.data, tuiTarget)).map((plugin) => ({ ...plugin, configKind: "tui" as const, configTarget: tuiTarget }))
-          : []
+        const serverPlugins = await loadHostPlugins("server")
+        const tuiPlugins = await loadHostPlugins("tui")
         const nextPlugins = [...serverPlugins, ...tuiPlugins]
         const nextLocalPlugins = await listLocalPlugins({ scope: props.selection.scope })
         if (!active) return
