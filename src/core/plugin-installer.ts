@@ -12,6 +12,7 @@ import type { ConfigDocument, ConfigLocatorOptions, ConfigTarget } from "./types
 
 const execFileAsync = promisify(execFile)
 const npmViewMaxBuffer = 10 * 1024 * 1024
+const npmCliRelativePath = ["node_modules", "npm", "bin", "npm-cli.js"]
 
 export class PluginInstallError extends Error {}
 
@@ -24,6 +25,18 @@ export type PluginInstallTarget = {
 }
 
 export type PluginManifestResolver = (spec: string) => Promise<PluginInstallTarget[]>
+
+export type NpmViewCommand = {
+  command: string
+  args: string[]
+}
+
+type NpmViewCommandOptions = {
+  platform?: NodeJS.Platform
+  env?: NodeJS.ProcessEnv
+  execPath?: string
+  fileExists?: (filePath: string) => boolean
+}
 
 export type PreparedPluginInstallWrite = {
   kind: PluginHostKind
@@ -195,6 +208,68 @@ function hasPackageThemes(spec: string, pkg: Record<string, unknown>) {
   return validCount > 0
 }
 
+function windowsPathValue(env: NodeJS.ProcessEnv) {
+  return env.Path ?? env.PATH ?? env.path ?? ""
+}
+
+function isNpmCliPath(filePath: string) {
+  return path.win32.basename(filePath).toLowerCase() === "npm-cli.js"
+}
+
+function windowsNpmCliCandidates(env: NodeJS.ProcessEnv, execPath: string) {
+  const candidates: string[] = []
+  const npmExecPath = env.npm_execpath
+  if (npmExecPath && isNpmCliPath(npmExecPath)) candidates.push(npmExecPath)
+
+  candidates.push(path.win32.join(path.win32.dirname(execPath), ...npmCliRelativePath))
+
+  for (const entry of windowsPathValue(env).split(path.win32.delimiter)) {
+    if (!entry) continue
+    candidates.push(path.win32.join(entry, ...npmCliRelativePath))
+    candidates.push(path.win32.join(entry, "npm-cli.js"))
+  }
+
+  return candidates
+}
+
+function findWindowsNpmCli(env: NodeJS.ProcessEnv, execPath: string, fileExists: (filePath: string) => boolean) {
+  const seen = new Set<string>()
+  for (const candidate of windowsNpmCliCandidates(env, execPath)) {
+    const key = candidate.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (fileExists(candidate)) return candidate
+  }
+}
+
+function findWindowsNpmExecutable(env: NodeJS.ProcessEnv, fileExists: (filePath: string) => boolean) {
+  const seen = new Set<string>()
+  for (const entry of windowsPathValue(env).split(path.win32.delimiter)) {
+    if (!entry) continue
+    const candidate = path.win32.join(entry, "npm.exe")
+    const key = candidate.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (fileExists(candidate)) return candidate
+  }
+}
+
+export function resolveNpmViewCommand(spec: string, options: NpmViewCommandOptions = {}): NpmViewCommand {
+  if ((options.platform ?? process.platform) !== "win32") return { command: "npm", args: ["view", spec, "--json"] }
+
+  const execPath = options.execPath ?? process.execPath
+  const env = options.env ?? process.env
+  const fileExists = options.fileExists ?? existsSync
+  const npmCliPath = findWindowsNpmCli(env, execPath, fileExists)
+  if (!npmCliPath) {
+    const npmExecutablePath = findWindowsNpmExecutable(env, fileExists)
+    if (npmExecutablePath) return { command: npmExecutablePath, args: ["view", spec, "--json"] }
+    throw new PluginInstallError("Could not locate npm CLI on Windows to read plugin metadata. Install npm or pass --plugin-target server, tui, or both.")
+  }
+
+  return { command: execPath, args: [npmCliPath, "view", spec, "--json"] }
+}
+
 export function pluginTargetsFromPackage(spec: string, pkg: Record<string, unknown>): PluginInstallTarget[] {
   const targets: PluginInstallTarget[] = []
   const server = exportTarget(pkg, "server")
@@ -209,7 +284,8 @@ export function pluginTargetsFromPackage(spec: string, pkg: Record<string, unkno
 }
 
 export async function readNpmPluginManifest(spec: string): Promise<PluginInstallTarget[]> {
-  const { stdout } = await execFileAsync("npm", ["view", spec, "--json"], { maxBuffer: npmViewMaxBuffer })
+  const command = resolveNpmViewCommand(spec)
+  const { stdout } = await execFileAsync(command.command, command.args, { maxBuffer: npmViewMaxBuffer })
   let parsed: unknown
   try {
     parsed = JSON.parse(stdout)

@@ -4,13 +4,74 @@ import os from "node:os"
 import path from "node:path"
 import { parse } from "jsonc-parser"
 import { describe, expect, test } from "vitest"
-import { locatePluginHostConfig, pluginTargetsFromPackage, preparePluginInstallWrites, PluginInstallError } from "../src/core/plugin-installer.js"
+import { locatePluginHostConfig, pluginTargetsFromPackage, preparePluginInstallWrites, PluginInstallError, resolveNpmViewCommand } from "../src/core/plugin-installer.js"
 
 async function tempDir() {
   return mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-installer-"))
 }
 
 describe("plugin installer", () => {
+  test("uses npm directly for npm view on non-Windows platforms", () => {
+    expect(resolveNpmViewCommand("opencode-cache-hit@latest", { platform: "linux" })).toEqual({
+      command: "npm",
+      args: ["view", "opencode-cache-hit@latest", "--json"],
+    })
+  })
+
+  test("uses npm cli js through node for npm view on Windows", () => {
+    const nodePath = path.win32.join("C:/Program Files/nodejs", "node.exe")
+    const npmCliPath = path.win32.join("C:/Program Files/nodejs", "node_modules", "npm", "bin", "npm-cli.js")
+
+    expect(resolveNpmViewCommand("opencode-cache-hit@latest", {
+      platform: "win32",
+      execPath: nodePath,
+      env: {},
+      fileExists: (filePath) => filePath === npmCliPath,
+    })).toEqual({
+      command: nodePath,
+      args: [npmCliPath, "view", "opencode-cache-hit@latest", "--json"],
+    })
+  })
+
+  test("prefers npm execpath when it points at npm cli js on Windows", () => {
+    const nodePath = path.win32.join("C:/Tools/node", "node.exe")
+    const npmCliPath = path.win32.join("C:/Users/Azusa/AppData/Roaming/npm", "node_modules", "npm", "bin", "npm-cli.js")
+
+    expect(resolveNpmViewCommand("acme", {
+      platform: "win32",
+      execPath: nodePath,
+      env: { npm_execpath: npmCliPath },
+      fileExists: (filePath) => filePath === npmCliPath,
+    })).toEqual({
+      command: nodePath,
+      args: [npmCliPath, "view", "acme", "--json"],
+    })
+  })
+
+  test("falls back to npm exe when npm cli js is unavailable on Windows", () => {
+    const nodePath = path.win32.join("C:/Tools/node", "node.exe")
+    const npmExePath = path.win32.join("C:/Users/Azusa/AppData/Local/Volta/bin", "npm.exe")
+
+    expect(resolveNpmViewCommand("acme", {
+      platform: "win32",
+      execPath: nodePath,
+      env: { Path: path.win32.dirname(npmExePath) },
+      fileExists: (filePath) => filePath === npmExePath,
+    })).toEqual({
+      command: npmExePath,
+      args: ["view", "acme", "--json"],
+    })
+  })
+
+  test("reports a helpful error when npm cannot be found on Windows", () => {
+    expect(() => resolveNpmViewCommand("acme", {
+      platform: "win32",
+      execPath: path.win32.join("C:/Tools/node", "node.exe"),
+      env: {},
+      fileExists: () => false,
+    })).toThrow("Could not locate npm CLI on Windows")
+  })
+
   test("detects server and tui targets from package metadata", () => {
     expect(pluginTargetsFromPackage("acme", { main: "./server.js" })).toEqual([{ kind: "server" }])
     expect(pluginTargetsFromPackage("acme", { exports: { "./server": "./server.js" } })).toEqual([{ kind: "server", options: undefined }])
