@@ -351,6 +351,12 @@ function cloneConfig(config: Record<string, unknown>) {
   return structuredClone(config)
 }
 
+function nonCanonicalExplicitTarget(options: ConfigLocatorOptions): ConfigTarget | undefined {
+  if (!options.configPath) return undefined
+  const target = locateConfig(options)
+  return kindForCanonicalConfigPath(target.path) ? undefined : target
+}
+
 export function locatePluginHostConfig(options: ConfigLocatorOptions, kind: PluginHostKind) {
   const home = options.home ?? os.homedir()
   if (!options.configPath) return locatePluginHostConfigTargets(options, kind)[0] ?? firstPluginConfigTarget(globalPluginConfigDirectory(home), kind, "global", home)
@@ -454,6 +460,10 @@ export async function preparePluginInstallWrites(input: PreparePluginInstallInpu
   const targets = await resolvePluginInstallTargets(input.spec, selection, input.options, input.resolveManifest)
   const writes: PreparedPluginInstallWrite[] = []
   const targetKinds = new Set(targets.map((target) => target.kind))
+  const customTarget = nonCanonicalExplicitTarget(input)
+  if (customTarget && targetKinds.size > 1) {
+    throw new PluginInstallError(`Custom config path ${customTarget.path} cannot be used for multiple plugin targets. Use canonical opencode.json/tui.json config paths or pass --plugin-target server or tui.`)
+  }
   const packageKey = packageNameForSpec(normalizePluginPackage(input.spec))
   const documentsByKind = new Map<PluginHostKind, ConfigDocument[]>()
 
@@ -461,8 +471,9 @@ export async function preparePluginInstallWrites(input: PreparePluginInstallInpu
     const existing = documentsByKind.get(kind)
     if (existing) return existing
     const documents = await readPluginHostConfigs(input, kind)
-    documentsByKind.set(kind, documents)
-    return documents
+    const filtered = customTarget && !targetKinds.has(kind) ? documents.filter((document) => document.target.path !== customTarget.path) : documents
+    documentsByKind.set(kind, filtered)
+    return filtered
   }
 
   if (selection !== "both") {

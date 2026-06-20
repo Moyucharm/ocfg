@@ -7,6 +7,7 @@ import { locateConfig } from "../core/config-locator.js"
 import { readConfig } from "../core/config-reader.js"
 import { validateConfig, validateTuiConfig } from "../core/schema-validator.js"
 import { defaultSecretFilePath, restoreSecretFile, snapshotSecretFile, writeSecretFileSafely } from "../core/secret-file.js"
+import { rollbackConfigFileBatch, snapshotConfigFiles } from "../core/config-snapshot.js"
 import { writeConfigSafely } from "../core/config-writer.js"
 import { enableExaSearchPermissions, OPENCODE_EXA_ENV } from "../core/search-toggle.js"
 import { writeUserEnvVar, type UserEnvWriteResult } from "../core/user-env.js"
@@ -73,6 +74,7 @@ import { useTuiInput } from "./input.js"
 import { buildExistingProviderEditPatch, type ExistingProviderEditDraft } from "./provider-edit-existing.js"
 import { buildExistingModelEditPatch, type ExistingModelEditDraft } from "./model-edit-existing.js"
 import { applyDefaultModelSelection, applyDefaultModelText, collectDefaultModelOptions, isSelectableDefaultModelRef, type DefaultModelKey } from "./default-model.js"
+import { pluginLocatorOptions } from "./plugin-locator.js"
 import { TuiKeybindProvider } from "./keybinds.js"
 import { TuiMenuMemoryProvider } from "./menu-memory.js"
 import { defaultTuiPreferences, loadTuiPreferences, writeTuiLanguagePreference, type LoadedTuiPreferences } from "./preferences.js"
@@ -348,7 +350,9 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
 
       const results = []
       const rollbacks: Array<() => Promise<void>> = []
+      let configSnapshots: Awaited<ReturnType<typeof snapshotConfigFiles>> = []
       try {
+        configSnapshots = await snapshotConfigFiles(review.pluginInstallWrites.filter((write) => write.mode !== "noop").map((write) => write.document))
         for (let index = 0; index < review.pluginInstallWrites.length; index += 1) {
           const write = review.pluginInstallWrites[index]
           if (!write || write.mode === "noop") continue
@@ -361,14 +365,14 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
             validate: () => validations[index] ?? { valid: true, diagnostics: [] },
           })
           if (result.diagnostics.length > 0) {
-            for (const rollbackWrite of [...rollbacks].reverse()) await rollbackWrite()
+            await rollbackConfigFileBatch(configSnapshots, rollbacks)
             return { ...review, diagnostics: result.diagnostics, error: result.diagnostics.map((diagnostic) => diagnostic.message).join("\n") }
           }
           results.push(result)
         }
         return { ...review, results, result: results[0], completed: true }
       } catch (caught) {
-        for (const rollback of [...rollbacks].reverse()) await rollback()
+        await rollbackConfigFileBatch(configSnapshots, rollbacks)
         return { ...review, error: caught instanceof Error ? caught.message : String(caught) }
       }
     }
@@ -535,8 +539,7 @@ export function App(props: { initialPreferences?: LoadedTuiPreferences } = {}) {
     try {
       const writes = await preparePluginInstallWrites({
         spec: packageName,
-        scope: config.scope,
-        configPath: config.target?.path,
+        ...pluginLocatorOptions(config),
       })
       openDiffReview({
         targetPath: writes.map((write) => write.target.path).join(", "),

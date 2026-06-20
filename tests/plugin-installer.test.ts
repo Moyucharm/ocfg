@@ -162,6 +162,35 @@ describe("plugin installer", () => {
     expect(locatePluginHostConfig({ scope: "project", cwd: dir }, "tui").path).toBe(path.join(dir, ".opencode", "tui.json"))
   })
 
+  test("keeps non-canonical custom config paths as a single plugin host", async () => {
+    const dir = await tempDir()
+    const customPath = path.join(dir, "custom.jsonc")
+    await writeFile(customPath, `{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["acme"]
+}
+`, "utf8")
+
+    const writes = await preparePluginInstallWrites({
+      spec: "acme",
+      configPath: customPath,
+      pluginTarget: "server",
+    })
+
+    expect(writes.map((write) => [write.kind, write.target.path, write.mode])).toEqual([["server", customPath, "noop"]])
+  })
+
+  test("rejects multi-target installs into a non-canonical custom config path", async () => {
+    const dir = await tempDir()
+    const customPath = path.join(dir, "custom.jsonc")
+
+    await expect(preparePluginInstallWrites({
+      spec: "acme",
+      configPath: customPath,
+      resolveManifest: async () => [{ kind: "server" }, { kind: "tui" }],
+    })).rejects.toThrow("cannot be used for multiple plugin targets")
+  })
+
   test("anchors missing project host config to discovered .opencode directory", async () => {
     const dir = await tempDir()
     const child = path.join(dir, "src")

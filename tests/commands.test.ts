@@ -484,6 +484,19 @@ describe("commands", () => {
     expect(resolvedSpecs).toEqual(["custom-plugin"])
   })
 
+  test("edits custom config path plugins once by auto target", async () => {
+    const filePath = await tempFile("custom.jsonc")
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, `{
+  "plugin": ["custom-plugin"]
+}
+`, "utf8")
+
+    await editPluginCommand("custom-plugin", { configPath: filePath, optionsJson: "{\"enabled\":true}", validate: valid })
+
+    expect(parse(await readFile(filePath, "utf8")).plugin).toEqual([["custom-plugin", { enabled: true }]])
+  })
+
   test("lists npm plugins from json and jsonc host configs", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "ocfg-plugin-list-merged-"))
     const configDir = path.join(home, ".config", "opencode")

@@ -1,6 +1,5 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
-import path from "node:path"
 import { applyConfigEdits } from "../core/jsonc-editor.js"
+import { rollbackConfigFileBatch, snapshotConfigFiles } from "../core/config-snapshot.js"
 import { writeConfigSafely, type ValidationResult, type WriteConfigSafelyResult } from "../core/config-writer.js"
 import {
   disableLocalPlugin,
@@ -84,12 +83,6 @@ type PluginHostListResult = {
   diagnostics: Diagnostic[]
 }
 
-type ConfigFileSnapshot = {
-  path: string
-  exists: boolean
-  text?: string
-}
-
 type PreparedPluginMutation = {
   target: PluginManagementTarget
   nextConfig?: Record<string, unknown>
@@ -148,55 +141,17 @@ function pluginTargetLabel(kind: PluginHostKind) {
   return kind === "server" ? "server" : "tui"
 }
 
-function isNotFoundError(caught: unknown) {
-  return caught && typeof caught === "object" && "code" in caught && caught.code === "ENOENT"
-}
-
-async function snapshotConfigFile(document: ConfigDocument): Promise<ConfigFileSnapshot> {
-  const targetPath = document.target.path
-  if (!document.target.exists) return { path: targetPath, exists: false }
-  return { path: targetPath, exists: true, text: await readFile(targetPath, "utf8") }
-}
-
-async function snapshotConfigFiles(documents: ConfigDocument[], dryRun: boolean): Promise<ConfigFileSnapshot[]> {
-  if (dryRun) return []
-
-  const snapshots: ConfigFileSnapshot[] = []
-  const seen = new Set<string>()
-  for (const document of documents) {
-    if (seen.has(document.target.path)) continue
-    seen.add(document.target.path)
-    snapshots.push(await snapshotConfigFile(document))
-  }
-  return snapshots
-}
-
-async function restoreConfigSnapshot(snapshot: ConfigFileSnapshot) {
-  if (snapshot.exists) {
-    await mkdir(path.dirname(snapshot.path), { recursive: true })
-    await writeFile(snapshot.path, snapshot.text ?? "", "utf8")
-    return
-  }
-
-  await unlink(snapshot.path).catch((caught: unknown) => {
-    if (isNotFoundError(caught)) return
-    throw caught
-  })
-}
-
-async function rollbackPluginBatch(configSnapshots: ConfigFileSnapshot[], stateRollbacks: Array<() => Promise<void>>) {
-  for (const rollback of [...stateRollbacks].reverse()) await rollback()
-  for (const snapshot of [...configSnapshots].reverse()) await restoreConfigSnapshot(snapshot)
-}
-
 function kindsForSelection(selection: PluginTargetSelection): PluginHostKind[] {
   return selection === "server" || selection === "tui" ? [selection] : ["server", "tui"]
 }
 
 async function readPluginManagementCandidates(packageName: string, options: ConfigCommandOptions, kinds: PluginHostKind[]): Promise<PluginManagementTarget[]> {
   const targets: PluginManagementTarget[] = []
+  const seen = new Set<string>()
   for (const kind of kinds) {
     for (const target of locatePluginHostConfigTargets(locatorOptions(options), kind)) {
+      if (seen.has(target.path)) continue
+      seen.add(target.path)
       const document = await readPluginHostConfig(target)
       if (document.diagnostics.length > 0) throw new Error(`Invalid ${pluginTargetLabel(kind)} plugin config at ${target.path}: ${document.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`)
       const existing = findPlugin(document.data, packageName)
@@ -403,7 +358,7 @@ async function writePluginInstallWrites(spec: string, writes: PreparedPluginInst
       })
       outputs.push({ kind: write.kind, mode: write.mode, target: write.target, result })
       if (result.diagnostics.length > 0) {
-        if (!dryRun) await rollbackPluginBatch(configSnapshots, stateRollbacks)
+        if (!dryRun) await rollbackConfigFileBatch(configSnapshots, stateRollbacks)
         const failed = { spec, outputs, diagnostics: result.diagnostics, dryRun }
         printPluginInstallResult(failed, options.json)
         setExitCodeForDiagnostics(result.diagnostics)
@@ -411,7 +366,7 @@ async function writePluginInstallWrites(spec: string, writes: PreparedPluginInst
       }
     }
   } catch (caught) {
-    if (!dryRun) await rollbackPluginBatch(configSnapshots, stateRollbacks)
+    if (!dryRun) await rollbackConfigFileBatch(configSnapshots, stateRollbacks)
     throw caught
   }
 
@@ -490,7 +445,7 @@ async function writePluginMutations(
         })
         results.push({ kind: item.target.kind, target: item.target.target, result })
         if (result.diagnostics.length > 0) {
-          if (!dryRun) await rollbackPluginBatch(configSnapshots, stateRollbacks)
+          if (!dryRun) await rollbackConfigFileBatch(configSnapshots, stateRollbacks)
           printDiagnostics(result.diagnostics, options.json)
           setExitCodeForDiagnostics(result.diagnostics)
           return { results, diagnostics: result.diagnostics }
@@ -511,7 +466,7 @@ async function writePluginMutations(
       }
     }
   } catch (caught) {
-    if (!dryRun) await rollbackPluginBatch(configSnapshots, stateRollbacks)
+    if (!dryRun) await rollbackConfigFileBatch(configSnapshots, stateRollbacks)
     throw caught
   }
 

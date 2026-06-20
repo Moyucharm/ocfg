@@ -8,6 +8,7 @@ import { useTuiText } from "../i18n.js"
 import { useTuiInput } from "../input.js"
 import { matchesKeybind, useTuiKeybinds } from "../keybinds.js"
 import { useRememberedOpenCodeMenuSelection } from "../menu-memory.js"
+import { pluginLocatorOptions } from "../plugin-locator.js"
 import type { TuiConfigSelection } from "../types.js"
 import { OpenCodeMenu, openCodeMenuRows, useDelayedLoading, type OpenCodeMenuGroup } from "../ui.js"
 
@@ -114,7 +115,7 @@ export function PluginListScreen(props: {
 
   async function loadHostPlugins(kind: PluginHostKind) {
     const items: PluginListItem[] = []
-    for (const target of locatePluginHostConfigTargets({ scope: props.selection.scope, configPath: props.selection.target?.path }, kind)) {
+    for (const target of locatePluginHostConfigTargets(pluginLocatorOptions(props.selection), kind)) {
       const document = await readPluginHostConfig(target)
       if (document.diagnostics.length > 0) throw new Error(document.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
       items.push(...(await listNpmPlugins(document.data, target)).map((plugin) => ({ ...plugin, configKind: kind, configTarget: target })))
