@@ -1,6 +1,6 @@
 {
   "name": "ocfg",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenCode configuration editor.",
   "author": "moyucharm <chilicheem@gmail.com>",
   "type": "module",

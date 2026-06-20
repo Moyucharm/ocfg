@@ -25,7 +25,7 @@ The [LINUX DO](https://linux.do/) forum provides community support for this proj
 
 ## Package Status
 
-The npm package name is `ocfg`. Current release: `v0.2.0`.
+The npm package name is `ocfg`. Current release: `v0.3.0`.
 
 Runtime requirement: Node.js `>=20`.
 
